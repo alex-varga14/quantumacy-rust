@@ -7,8 +7,10 @@ license.workspace = true
 description = "Homomorphic encryption wrapper around tfhe-rs for privacy-preserving ML"
 
 [dependencies]
-# tfhe = { workspace = true }  # Uncomment in Phase 4
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+sha2 = { workspace = true }

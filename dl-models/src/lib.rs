@@ -1,14 +1,11 @@
 //! # Deep Learning Models
 //!
-//! Medical imaging models built on Candle for use in
-//! federated training and encrypted inference.
-//!
-//! ## Status: Phase 5 (Scaffolded)
-//!
-//! Planned models:
-//! - Chest X-ray classifier (CNN)
-//! - Histology tissue classifier
-//! - Medical image segmentation
+//! Medical imaging models for federated training and encrypted
+//! inference.
 
+mod common;
 pub mod chestscan;
 pub mod histology;
+
+pub use chestscan::ChestScanModel;
+pub use histology::HistologyModel;

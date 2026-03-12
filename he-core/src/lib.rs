@@ -1,15 +1,10 @@
 //! # Homomorphic Encryption Core
 //!
-//! Wrapper around tfhe-rs providing CKKS scheme operations for
+//! Simulation-grade homomorphic encryption primitives for
 //! privacy-preserving machine learning inference.
 //!
-//! ## Status: Phase 4 (Scaffolded)
-//!
-//! Will implement:
-//! - CKKS scheme for approximate encrypted arithmetic
-//! - Key generation, encryption, decryption services
-//! - Encrypted tensor operations for neural network inference
-//! - Three-party architecture (client, storage, processing)
+//! This crate intentionally models the shape of a CKKS-style API while
+//! remaining dependency-light and testable in constrained environments.
 
 pub mod encrypt;
 pub mod operations;
@@ -36,3 +31,24 @@ pub enum HeError {
 }
 
 pub type HeResult<T> = Result<T, HeError>;
+
+pub use encrypt::{
+    CiphertextVector,
+    ClientKey,
+    HeKeySet,
+    PublicKey,
+    ServerKey,
+    decrypt_vector,
+    encrypt_vector,
+    generate_keys,
+};
+pub use operations::{
+    add_ciphertexts,
+    add_plaintext,
+    apply_activation,
+    apply_polynomial,
+    linear_layer,
+    multiply_ciphertexts,
+    multiply_plaintext,
+};
+pub use schemes::{Activation, HeParameters, HeScheme};

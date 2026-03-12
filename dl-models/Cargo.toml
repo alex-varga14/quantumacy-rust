@@ -8,6 +8,10 @@ description = "Deep learning models for medical imaging (Candle-based)"
 
 [dependencies]
 fedlearn-core = { path = "../fedlearn-core" }
+he-core = { path = "../he-core" }
+he-inference = { path = "../he-inference" }
 serde = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
