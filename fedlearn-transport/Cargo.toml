@@ -1,0 +1,27 @@
+[package]
+name = "fedlearn-transport"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "QKD-secured gRPC transport for federated learning"
+
+[dependencies]
+fedlearn-core = { path = "../fedlearn-core" }
+qkd-core = { path = "../qkd-core" }
+qkd-network = { path = "../qkd-network" }
+tokio = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+bytes = { workspace = true }
+parking_lot = { workspace = true }
+chrono = { workspace = true }
+tokio-stream = "0.1"
+
+[build-dependencies]
+tonic-build = { workspace = true }

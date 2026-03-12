@@ -1,0 +1,13 @@
+[package]
+name = "dl-models"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Deep learning models for medical imaging (Candle-based)"
+
+[dependencies]
+fedlearn-core = { path = "../fedlearn-core" }
+serde = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

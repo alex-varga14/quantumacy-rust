@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package quantumacy.fedlearn;
+
+// Federated Learning service
+service FederatedLearning {
+    // Client registers with the aggregation server
+    rpc Register(RegisterRequest) returns (RegisterResponse);
+
+    // Server pushes global model to client
+    rpc GetGlobalModel(ModelRequest) returns (ModelResponse);
+
+    // Client sends local update to server
+    rpc SubmitUpdate(UpdateRequest) returns (UpdateResponse);
+
+    // Client queries training status
+    rpc GetStatus(StatusRequest) returns (StatusResponse);
+
+    // Streaming: server pushes round notifications
+    rpc SubscribeRounds(SubscribeRequest) returns (stream RoundNotification);
+}
+
+// QKD-integrated key exchange for securing FL transport
+service KeyExchange {
+    // Request a QKD key for encrypting model updates
+    rpc RequestKey(KeyRequest) returns (KeyResponse);
+
+    // Rotate key mid-session
+    rpc RotateKey(RotateKeyRequest) returns (KeyResponse);
+}
+
+message RegisterRequest {
+    string client_id = 1;
+    uint64 dataset_size = 2;
+    string capabilities = 3; // JSON: compute resources, etc.
+}
+
+message RegisterResponse {
+    string session_id = 1;
+    uint32 current_round = 2;
+    bytes global_model = 3; // Serialized ModelWeights
+}
+
+message ModelRequest {
+    string session_id = 1;
+    string client_id = 2;
+    uint32 round = 3;
+}
+
+message ModelResponse {
+    uint32 round = 1;
+    bytes model_weights = 2; // Serialized ModelWeights
+    bytes training_config = 3; // Serialized LocalTrainConfig
+}
+
+message UpdateRequest {
+    string session_id = 1;
+    string client_id = 2;
+    uint32 round = 3;
+    bytes model_update = 4; // Serialized ModelUpdate
+    string key_id = 5; // QKD key used for encryption (if encrypted)
+    bool encrypted = 6;
+}
+
+message UpdateResponse {
+    bool accepted = 1;
+    string message = 2;
+}
+
+message StatusRequest {
+    string session_id = 1;
+}
+
+message StatusResponse {
+    uint32 current_round = 1;
+    uint32 total_rounds = 2;
+    uint32 participating_clients = 3;
+    double global_loss = 4;
+    double global_accuracy = 5;
+    string state = 6; // "waiting", "aggregating", "complete"
+}
+
+message SubscribeRequest {
+    string session_id = 1;
+    string client_id = 2;
+}
+
+message RoundNotification {
+    uint32 round = 1;
+    string action = 2; // "train", "wait", "complete"
+    bytes payload = 3; // Optional: model weights or config
+}
+
+message KeyRequest {
+    string client_id = 1;
+    string session_id = 2;
+    uint32 key_bits = 3;
+}
+
+message KeyResponse {
+    string key_id = 1;
+    bytes key_material = 2; // Encrypted key material
+    uint64 expires_at = 3;
+}
+
+message RotateKeyRequest {
+    string client_id = 1;
+    string session_id = 2;
+    string old_key_id = 3;
+}
