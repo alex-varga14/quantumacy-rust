@@ -13,9 +13,9 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Quantumacy Team"]
+authors = ["Alex Varga <alexanderv1414@gmail.com>"]
 license = "Apache-2.0"
-repository = "https://github.com/quantumacy/quantumacy-rs"
+repository = "https://github.com/alex-varga14/quantumacy-rust"
 
 [workspace.dependencies]
 # Async runtime

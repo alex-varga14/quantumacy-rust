@@ -1,6 +1,6 @@
 //! # QKD Core
 //!
-//! Quantum Key Distribution protocol implementations for the Quantumacy project.
+//! Quantum Key Distribution protocol implementations for the quantumacy-rust workspace.
 //! Provides BB84, Six-State, and B92 protocol simulators with realistic noise models,
 //! error correction (CASCADE), and privacy amplification.
 //!
