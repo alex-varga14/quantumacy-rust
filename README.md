@@ -1,15 +1,25 @@
 # quantumacy-rust
-Quantumacy-RS is a Rust rewrite of CERN's Quantumacy research platform - a production-grade, quantum-safe cryptography system combining Quantum Key Distribution (QKD), federated learning, and homomorphic encryption for privacy-preserving machine learning on sensitive medical data.
+
+Quantumacy-RS is a Rust **research platform** inspired by [CERN's Quantumacy](https://github.com/CERN/Quantumacy) project. It reimplements Quantumacy's four modules — QKD simulation, federated learning, medical-imaging models, and three-party encrypted inference — as a single idiomatic Rust workspace, exploring how quantum-safe, privacy-preserving machine learning on sensitive data could be architected in Rust.
+
+> **Not affiliated with or endorsed by CERN.** This is an independent
+> reimplementation; see [CERN_PARITY.md](CERN_PARITY.md) for how it maps to
+> the upstream modules.
+
+> ⚠️ **Not a security product.** The homomorphic-encryption layer is a
+> simulation with **zero confidentiality**, the QKD layer is a software
+> simulator, and the transport has no TLS or authentication. Read
+> [SECURITY.md](SECURITY.md) before doing anything with real data.
 
 ## Current State
 
-The repository is currently best treated as a **closed-alpha MVP platform**:
-- QKD simulation and secure channels are implemented
-- Federated learning services and transport are implemented
+The repository is a **research-parity MVP**:
+- QKD simulation (BB84 / B92 / Six-State) and AES-GCM secure channels are implemented
+- Federated learning services and gRPC transport are implemented
 - Homomorphic encryption is represented by a simulation-grade API for MVP development
 - Medical imaging models are lightweight baselines wired into the FL and HE layers
 
-See [PROJECT_STATE.md](PROJECT_STATE.md) for current implementation status and [RELEASE_READINESS.md](RELEASE_READINESS.md) for release gates.
+See [PROJECT_STATE.md](PROJECT_STATE.md) for current implementation status, [RELEASE_READINESS.md](RELEASE_READINESS.md) for release gates, and [SECURITY_ROADMAP.md](SECURITY_ROADMAP.md) for the security hardening plan.
 
 ## Local Verification
 
@@ -93,3 +103,13 @@ The MVP targets **research parity** with the upstream CERN/Quantumacy reference:
 - TLS / rustls overlay, authn/z, raw-key elimination
 - Real TCP/TLS P2P transport replacing the simulated `qkd-network/src/p2p.rs`
 - Candle-backed CNN replacing the dense baseline in `dl-models`
+
+The security side of this work is planned in detail in [SECURITY_ROADMAP.md](SECURITY_ROADMAP.md).
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you shall be licensed as above, without any
+additional terms or conditions.

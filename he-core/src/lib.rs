@@ -3,6 +3,19 @@
 //! Simulation-grade homomorphic encryption primitives for
 //! privacy-preserving machine learning inference.
 //!
+//! <div class="warning">
+//!
+//! **⚠️ NOT CRYPTOGRAPHICALLY SECURE.** This crate is a *simulation* of a
+//! CKKS-style HE workflow, not an implementation of homomorphic encryption.
+//! Ciphertexts produced here provide **zero confidentiality**: the masking
+//! values are carried inside the ciphertext itself and decryption does not
+//! depend on the secret key. Its purpose is to provide a stable API surface
+//! for research and integration work until the internals are replaced with a
+//! real HE backend (e.g. `tfhe-rs`). Never use this crate to protect real
+//! data. See `SECURITY.md` at the repository root.
+//!
+//! </div>
+//!
 //! This crate intentionally models the shape of a CKKS-style API while
 //! remaining dependency-light and testable in constrained environments.
 

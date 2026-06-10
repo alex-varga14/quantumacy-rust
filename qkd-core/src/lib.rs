@@ -4,6 +4,16 @@
 //! Provides BB84, Six-State, and B92 protocol simulators with realistic noise models,
 //! error correction (CASCADE), and privacy amplification.
 //!
+//! <div class="warning">
+//!
+//! **⚠️ Simulation only.** There is no quantum hardware behind this crate:
+//! qubit preparation, transmission, and measurement are all simulated in
+//! software (as in upstream QKDSimkit). Keys derived here are only as secret
+//! as the classical RNG and process memory that produced them. See
+//! `SECURITY.md` at the repository root.
+//!
+//! </div>
+//!
 //! ## Architecture
 //!
 //! - **Protocols**: Pluggable QKD protocol implementations behind a common trait
