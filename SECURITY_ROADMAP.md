@@ -1,0 +1,235 @@
+# Post-MVP Security Hardening Roadmap
+
+> **For agentic workers:** This is a phased roadmap, not a single implementation
+> plan. Each workstream below is an independent subsystem; when a workstream is
+> scheduled, write a dedicated implementation plan for it (see
+> `superpowers:writing-plans`) and execute that plan task-by-task. Checkboxes
+> here track workstream-level progress.
+
+**Goal:** Take quantumacy-rust from "honest research simulation" to a platform
+whose security claims are real, in risk-ordered increments that each leave the
+workspace green (`cargo test --workspace`, `clippy -D warnings`).
+
+**Architecture:** Keep the existing crate boundaries and public APIs stable —
+`he-core`'s API was explicitly designed so its simulation internals can be
+swapped for a real backend, and `fedlearn-transport` isolates all network
+exposure. Harden from the outside in: transport first (cheapest, blocks
+everything else), then key lifecycle, then the cryptographic cores.
+
+**Tech stack targets:** `tonic` + `rustls` (TLS/mTLS), `hkdf`/`sha2` (key
+derivation), `zeroize` (already a workspace dep), a real HE backend (decision
+point: Zama `tfhe-rs` vs CKKS bindings — see Workstream 3), `cargo-audit`/
+`cargo-deny` in CI.
+
+---
+
+## Threat model (what we are defending against, post-MVP)
+
+**Assets**
+- A1. Patient inference inputs/outputs (the three-party HE flow)
+- A2. Model updates / gradients (training-data leakage via inversion attacks)
+- A3. Global model weights (IP of the model owner)
+- A4. Key material (QKD-derived AES keys, HE key sets)
+
+**Adversaries**
+- T1. Network attacker (passive eavesdropper or active MITM on gRPC)
+- T2. Unauthorized client (joins federation, poisons or steals the model)
+- T3. Honest-but-curious storage/compute party (reads ciphertexts it relays)
+- T4. Compromised process memory / disk (key scraping)
+- T5. Malicious dependency or build pipeline (supply chain)
+
+**Current exposure (MVP, all documented in [SECURITY.md](SECURITY.md))**
+- T1 wins trivially: no TLS, and `KeyExchange` returns raw key bytes in plaintext.
+- T2 wins trivially: registration accepts any client.
+- T3 wins trivially against the HE flow: `he-core` ciphertexts carry their own
+  masks (`he-core/src/encrypt.rs`, `CiphertextVector.mask`).
+- T4 partially mitigated: `qkd-core::KeyManager` zeroizes, but HE keys and
+  channel keys are plain structs.
+- T5 unmitigated: no `cargo audit`/`cargo deny` gate.
+
+Out of scope permanently (documented, not planned): real quantum hardware.
+QKD remains a simulator; its value is protocol research, not key secrecy.
+
+---
+
+## Workstream 1 — Transport security: TLS, mTLS, authn/authz
+
+**Threats closed:** T1, T2. **Priority: first** — every other guarantee is
+meaningless while keys cross the wire in plaintext.
+
+**Files:** `fedlearn-transport/src/grpc_service.rs`,
+`fedlearn-transport/src/bin/server.rs`, `fedlearn-transport/Cargo.toml`
+(enable `tonic/tls`), new `fedlearn-transport/src/auth.rs`,
+`fedlearn-transport/tests/`.
+
+- [ ] Enable `rustls` on the tonic server and client builders; env-configured
+      cert/key paths (`QUANTUMACY_TLS_CERT`, `QUANTUMACY_TLS_KEY`,
+      `QUANTUMACY_TLS_CA`); plaintext mode only behind an explicit
+      `QUANTUMACY_INSECURE=1` for local demos.
+- [ ] mTLS client identity: require client certificates signed by the
+      federation CA; map cert subject → client id at registration.
+- [ ] Authorization checks in `AggregationService`: only registered,
+      authenticated clients may fetch models or submit updates; reject
+      cross-session key requests in `KeyExchange`.
+- [ ] **Eliminate raw-key transfer.** `KeyExchange` must stop returning key
+      bytes. Replace with: both ends derive the channel key via HKDF-SHA256
+      over (TLS exporter material ‖ QKD-session id ‖ round id). The
+      QKD-derived key becomes a *mixed-in* input, never the sole secret and
+      never on the wire.
+- [ ] Integration tests: plaintext client rejected; wrong-CA cert rejected;
+      unregistered client cannot submit; full round over mTLS passes
+      (extend `fedlearn-transport/tests/mvp_flow.rs`).
+
+**Exit criteria:** a packet capture of a full FL round contains no key
+material and no plaintext weights; all five new tests green.
+
+## Workstream 2 — Key lifecycle: rotation, TTL, zeroization
+
+**Threats closed:** T4 (and residual T1 exposure window).
+
+**Files:** `qkd-core/src/key_manager.rs` (TTL exists — wire it to policy),
+`fedlearn-transport/src/secure_channel.rs`, `he-core/src/encrypt.rs`.
+
+- [ ] Define and document the session policy: max key age, max messages per
+      key, rotation on every aggregation round; enforce in `SecureFLChannel`.
+- [ ] `#[derive(Zeroize, ZeroizeOnDrop)]` (or manual impls) on `ClientKey`,
+      `ServerKey`, `HeKeySet`, and the AES key wrapper in
+      `secure_channel.rs`; audit for copies (e.g. `Clone` derives on key
+      types — remove where possible).
+- [ ] **Fix secret-derived identifiers:** `he-core` currently builds the
+      public `key_id` from the secret seed
+      (`format!("he-{:016x}", secret_seed)`) and derives `mask_seed` from
+      `secret_seed` by rotate/XOR. Harmless in a simulation; fatal in a real
+      backend. Key ids must be random UUIDs, and no public value may be a
+      function of secret material. Fix during or before Workstream 3.
+- [ ] Tests: key refused after TTL/N messages; dropped key memory is zeroed
+      (zeroize's own guarantees + a `Drop` unit test); key id uncorrelated
+      with secret.
+
+**Exit criteria:** documented rotation policy in SECURITY.md; no key type
+without zeroization; no public identifier derived from a secret.
+
+## Workstream 3 — Real homomorphic encryption backend
+
+**Threats closed:** T3 — the headline gap. Largest workstream; do not start
+before Workstream 1 lands (no point doing real HE over plaintext transport).
+
+**Decision to make first** (spike, ~1 week, document in an ADR):
+- **Option A: `tfhe-rs` (Zama).** Pure Rust, actively maintained — but TFHE is
+  exact integer/boolean FHE, so the dense models must be quantized and
+  polynomial activations replaced with programmable bootstrapping. Best
+  long-term fit for the "pure Rust workspace" constraint.
+- **Option B: CKKS via FFI** (OpenFHE/SEAL bindings). Matches the existing
+  CKKS-style API (approximate `f64` arithmetic, `slots`, `scaling_factor`)
+  almost 1:1, so `he-inference` and `dl-models` barely change — at the cost
+  of a C++ build dependency, which breaks the constrained-env story.
+
+**Files:** `he-core/src/{encrypt,operations,schemes}.rs` (internals only —
+keep the public API), `he-core/Cargo.toml` (feature flags
+`backend-sim` / `backend-real`, sim remains default for CI speed),
+`he-inference/src/model.rs` (tolerance constants), `dl-models/src/common.rs`
+(quantized export path if Option A).
+
+- [ ] Spike + ADR committed as `docs/adr/0001-he-backend.md`.
+- [ ] Implement backend behind feature flag; `CiphertextVector` loses the
+      `mask` field in the real backend (serialized ciphertext only).
+- [ ] Port the existing parity tests: encrypted vs plaintext inference
+      agreement within backend-appropriate tolerance (CKKS: ~1e-3, not the
+      sim's 1e-9; TFHE: exact at chosen quantization).
+- [ ] Negative tests: decryption with the wrong client key fails; a
+      storage-party view of the ciphertext yields no information (statistical
+      sanity test: ciphertext bytes pass a basic randomness check).
+- [ ] Benchmark in `he-core/benches/` and record results in README (set
+      expectations: real HE is 10³–10⁶× slower than the sim).
+- [ ] Update SECURITY.md: move `he-core` from "simulation" to "real backend,
+      unaudited" — keep the warning until an external review happens.
+
+**Exit criteria:** `three_party_demo --features backend-real` runs with
+genuine ciphertexts; sim backend clearly labeled and non-default in release
+docs.
+
+## Workstream 4 — Differential privacy audit
+
+**Threats closed:** A2 leakage through aggregated updates (complements, not
+replaces, transport security).
+
+**Files:** `fedlearn-core/src/privacy.rs`, `fedlearn-core/src/round.rs`.
+
+- [ ] Verify Gaussian mechanism calibration against the standard analytic
+      bound (σ ≥ √(2 ln(1.25/δ)) · Δ/ε) with property tests over parameter
+      ranges.
+- [ ] Replace naive ε-summation budget accounting with RDP/moments
+      accounting for multi-round composition (port the standard accountant;
+      test against published reference values from the DP-SGD literature).
+- [ ] Use `OsRng`/`ChaCha20Rng` seeded from OS entropy for noise — never a
+      reproducible seed in non-test code paths.
+- [ ] Document the (ε, δ) actually delivered per demo configuration.
+
+**Exit criteria:** accountant matches reference values; SECURITY.md DP row
+upgraded from "unreviewed" to "reviewed, see tests".
+
+## Workstream 5 — Real P2P transport and QKD classical-channel authentication
+
+**Threats closed:** residual T1 on the QKD path; honesty of the QKD
+simulation itself.
+
+**Files:** `qkd-network/src/p2p.rs` (rewrite), `qkd-network/src/client.rs`,
+`qkd-core/src/error_correction/cascade.rs`,
+`qkd-core/src/privacy_amplification.rs`.
+
+- [ ] Replace the in-process P2P simulation with real TCP + rustls between
+      two processes; keep the in-process path as a test fixture.
+- [ ] Authenticate the classical channel (QKD's actual hard requirement —
+      BB84 without an authenticated classical channel is MITM-able even with
+      perfect quantum hardware). Use pre-shared MAC keys or mTLS.
+- [ ] CASCADE: implement true two-party reconciliation (Bob corrects toward
+      Alice via parity exchange transcript) instead of using Alice's bits as
+      canonical output; count and subtract leaked parity bits from the
+      privacy-amplification input entropy.
+- [ ] Privacy amplification: replace SHA-256 counter compression with a
+      Toeplitz-matrix universal hash sized by the leaked-bits accounting.
+- [ ] Two-process integration test: full BB84 + CASCADE + amplification over
+      localhost TCP, keys match on both ends, QBER-threshold abort works.
+
+**Exit criteria:** two real processes derive identical keys over an
+authenticated channel; leakage accounting documented.
+
+## Workstream 6 — Supply chain and operational security (start now, ongoing)
+
+**Threats closed:** T5. Cheap; the first two items should land with the next
+CI change rather than waiting their turn.
+
+**Files:** `.github/workflows/ci.yml`, new `deny.toml`, new
+`.github/dependabot.yml`.
+
+- [ ] `cargo audit` job in CI (RUSTSEC advisories fail the build).
+- [ ] `cargo deny` for license + duplicate-version policy (`deny.toml`).
+- [ ] Dependabot/Renovate for `Cargo.toml` and GitHub Actions versions.
+- [ ] Fuzz the deserialization surfaces with `cargo-fuzz`: protobuf-decoded
+      messages into `grpc_service.rs`, and `serde_json` paths in
+      `fedlearn-core/src/model.rs`.
+- [ ] Pin GitHub Actions by SHA; sign release tags.
+
+**Exit criteria:** CI fails on known-vulnerable deps; fuzz targets run in a
+weekly scheduled job with zero outstanding crashes.
+
+---
+
+## Sequencing and review gates
+
+| Phase | Workstreams | Gate to next phase |
+|---|---|---|
+| 0 (done) | Honest disclosure: SECURITY.md, crate warnings, README reframe | — |
+| 1 | WS1 (transport) + WS6 first two items | Packet capture clean; CI audit gate green |
+| 2 | WS2 (keys) + WS4 (DP) — independent, parallelizable | Rotation policy enforced; DP accountant verified |
+| 3 | WS3 (real HE) | Real-backend three-party demo green |
+| 4 | WS5 (P2P/QKD) | Two-process QKD key agreement |
+| 5 | External security review of WS1–WS3 before any "beta" label | Findings triaged |
+
+Rules of the road:
+- Every task lands with tests, on a branch, with `cargo test --workspace` and
+  `clippy -D warnings` green — same bar as the MVP.
+- SECURITY.md is updated in the *same commit* as any change that alters a
+  security claim. The table there is the single source of truth users read.
+- Nothing in this repo claims "production-grade" until Phase 5's external
+  review completes.
