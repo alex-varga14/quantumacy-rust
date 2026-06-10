@@ -1,8 +1,8 @@
 # Quantumacy-RS: Project State
 
-**Date**: 2026-04-25
-**MVP Status**: RESEARCH-PARITY MVP READY
-**Total Rust LOC**: ~7,200 (incl. demos + server binary)
+**Date**: 2026-06-10
+**MVP Status**: RESEARCH-PARITY MVP READY — open-source release prep complete (LICENSE, SECURITY.md, CI, [SECURITY_ROADMAP.md](SECURITY_ROADMAP.md))
+**Total Rust LOC**: ~7,900 (incl. demos + server binary)
 **Tests Authored**: 65
 **Local Test Execution**: ✅ Verified — `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are both green.
 **Workspace Crates**: 7

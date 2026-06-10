@@ -19,7 +19,8 @@ The repository now has 1:1 research parity with [CERN/Quantumacy](https://github
 - [x] `cargo test -p dl-models`
 - [x] `cargo clippy --workspace --all-targets -- -D warnings`
 - [x] Constrained-env build path works without a system `protoc` (vendored via `protoc-bin-vendored`).
-- [ ] `cargo fmt --all --check`
+- [x] `cargo fmt --all --check`
+- [x] GitHub Actions CI (fmt, check, clippy, test on ubuntu + macos) — `.github/workflows/ci.yml`
 
 ### Gate 2: Runnable Platform Flow
 - [x] Transport services exist for registration, model fetch, update submission, status, and key exchange.
@@ -35,9 +36,22 @@ The repository now has 1:1 research parity with [CERN/Quantumacy](https://github
 - [x] Document that `he-core` is simulation-grade and not production HE.
 - [x] Document that key bootstrap is permissive for MVP.
 - [x] Document research-parity vs production scope (see [README.md](README.md) and [CERN_PARITY.md](CERN_PARITY.md)).
-- [ ] Add TLS/rustls around transport.
-- [ ] Define session lifetime and key rotation policy.
-- [ ] Add authentication/authorization for clients.
+- [x] SECURITY.md with per-component security status and reporting policy.
+- [x] Crate-level simulation warnings in `he-core` and `qkd-core` rustdoc.
+- [x] Post-MVP hardening plan ([SECURITY_ROADMAP.md](SECURITY_ROADMAP.md)).
+- [ ] Add TLS/rustls around transport (Workstream 1).
+- [ ] Define session lifetime and key rotation policy (Workstream 2).
+- [ ] Add authentication/authorization for clients (Workstream 1).
+
+### Gate 3.5: Open-Source Release Prep
+- [x] Apache-2.0 LICENSE file (matches `Cargo.toml` workspace license).
+- [x] README reframed as research platform with CERN non-affiliation notice.
+- [x] Junk files untracked (`.DS_Store`, internal handoff notes).
+- [x] All work committed and pushed.
+- [ ] Repository made public.
+- [ ] GitHub: private vulnerability reporting enabled (SECURITY.md references it).
+- [ ] GitHub: Dependabot alerts enabled.
+- [ ] First CI run verified green on GitHub Actions.
 
 ### Gate 4: Productization
 - [x] Structured logging via `tracing-subscriber` with env-filter on the server binary.

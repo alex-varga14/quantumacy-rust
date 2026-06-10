@@ -23,7 +23,8 @@ See [PROJECT_STATE.md](PROJECT_STATE.md) for current implementation status, [REL
 
 ## Local Verification
 
-From the repo root:
+Requires a stable Rust toolchain (developed and CI-tested on recent stable;
+no nightly features). From the repo root:
 
 ```bash
 cargo check --workspace --all-targets
