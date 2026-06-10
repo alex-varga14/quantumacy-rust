@@ -1,0 +1,20 @@
+# Rust build artefacts
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# OS-specific cruft
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Local env
+.env
+.env.*
+
+# Internal working notes (not part of the release)
+AGENT_HANDOFF.md
