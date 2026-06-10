@@ -1,18 +1,12 @@
 use std::collections::HashMap;
 use std::sync::{
-    Arc,
     atomic::{AtomicU64, Ordering},
+    Arc,
 };
 
 use he_core::{
-    CiphertextVector,
-    ClientKey,
-    HeError,
-    HeKeySet,
-    HeResult,
+    decrypt_vector, encrypt_vector, CiphertextVector, ClientKey, HeError, HeKeySet, HeResult,
     ServerKey,
-    decrypt_vector,
-    encrypt_vector,
 };
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -67,7 +61,9 @@ impl EncryptedInferenceService {
             )));
         }
 
-        self.input_store.write().insert(session_id.to_string(), input);
+        self.input_store
+            .write()
+            .insert(session_id.to_string(), input);
         Ok(())
     }
 
@@ -114,8 +110,8 @@ impl EncryptedInferenceService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use he_core::{Activation, HeParameters, generate_keys};
     use crate::model::DenseLayer;
+    use he_core::{generate_keys, Activation, HeParameters};
 
     #[test]
     fn test_service_runs_three_party_flow() {
@@ -127,17 +123,16 @@ mod tests {
                     Activation::ReluApprox,
                 )
                 .unwrap(),
-                DenseLayer::new(
-                    vec![vec![0.4, -0.2]],
-                    vec![0.3],
-                    Activation::SigmoidApprox,
-                )
-                .unwrap(),
+                DenseLayer::new(vec![vec![0.4, -0.2]], vec![0.3], Activation::SigmoidApprox)
+                    .unwrap(),
             ],
             vec!["abnormal".to_string()],
         )
         .unwrap();
-        let service = EncryptedInferenceService::new(model.clone(), generate_keys(HeParameters::default()).unwrap());
+        let service = EncryptedInferenceService::new(
+            model.clone(),
+            generate_keys(HeParameters::default()).unwrap(),
+        );
         let session_id = service.create_session();
 
         let input = vec![1.0, -0.5];
@@ -147,7 +142,7 @@ mod tests {
         let decrypted = service.decrypt_result(&result).unwrap();
         let expected = model.infer_plaintext(&input).unwrap();
 
-        assert_eq!(service.session_status(&session_id).has_result, true);
+        assert!(service.session_status(&session_id).has_result);
         assert!((decrypted[0] - expected[0]).abs() < 1e-9);
     }
 
@@ -158,7 +153,8 @@ mod tests {
             vec!["ok".to_string()],
         )
         .unwrap();
-        let service = EncryptedInferenceService::new(model, generate_keys(HeParameters::default()).unwrap());
+        let service =
+            EncryptedInferenceService::new(model, generate_keys(HeParameters::default()).unwrap());
 
         let err = service.run_inference("missing-session").unwrap_err();
         assert!(matches!(err, HeError::Operation(_)));

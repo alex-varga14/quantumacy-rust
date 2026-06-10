@@ -60,12 +60,7 @@ impl CiphertextVector {
             .collect()
     }
 
-    pub(crate) fn from_plaintext(
-        key_id: &str,
-        plaintext: &[f64],
-        scale: f64,
-        seed: u64,
-    ) -> Self {
+    pub(crate) fn from_plaintext(key_id: &str, plaintext: &[f64], scale: f64, seed: u64) -> Self {
         let mask = derive_mask(seed, key_id, plaintext.len(), scale);
         let encoded = plaintext
             .iter()
@@ -137,7 +132,9 @@ pub fn decrypt_vector(client_key: &ClientKey, ciphertext: &CiphertextVector) -> 
     }
 
     if ciphertext.encoded.len() != ciphertext.mask.len() {
-        return Err(HeError::Decryption("ciphertext is internally inconsistent".to_string()));
+        return Err(HeError::Decryption(
+            "ciphertext is internally inconsistent".to_string(),
+        ));
     }
     let _ = client_key.secret_seed;
     Ok(ciphertext.plaintext())
@@ -221,8 +218,10 @@ mod tests {
 
     #[test]
     fn test_rejects_vectors_that_exceed_slot_count() {
-        let mut params = HeParameters::default();
-        params.slots = 2;
+        let params = HeParameters {
+            slots: 2,
+            ..HeParameters::default()
+        };
         let keys = generate_keys(params).unwrap();
 
         let err = encrypt_vector(&keys.public_key, &[1.0, 2.0, 3.0]).unwrap_err();

@@ -1,11 +1,5 @@
 use he_core::{
-    Activation,
-    CiphertextVector,
-    HeError,
-    HeResult,
-    ServerKey,
-    apply_activation,
-    linear_layer,
+    apply_activation, linear_layer, Activation, CiphertextVector, HeError, HeResult, ServerKey,
 };
 use serde::{Deserialize, Serialize};
 
@@ -121,7 +115,10 @@ impl EncryptedModel {
             }
         }
 
-        let output_dim = layers.last().map(|layer| layer.output_dim()).unwrap_or_default();
+        let output_dim = layers
+            .last()
+            .map(|layer| layer.output_dim())
+            .unwrap_or_default();
         if !labels.is_empty() && labels.len() != output_dim {
             return Err(HeError::Operation(format!(
                 "label count {} does not match output dimension {}",
@@ -142,7 +139,10 @@ impl EncryptedModel {
     }
 
     pub fn output_dim(&self) -> usize {
-        self.layers.last().map(|layer| layer.output_dim()).unwrap_or(0)
+        self.layers
+            .last()
+            .map(|layer| layer.output_dim())
+            .unwrap_or(0)
     }
 
     pub fn infer_plaintext(&self, input: &[f64]) -> HeResult<Vec<f64>> {
@@ -192,7 +192,7 @@ fn apply_polynomial_scalar(value: f64, coefficients: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use he_core::{HeParameters, decrypt_vector, encrypt_vector, generate_keys};
+    use he_core::{decrypt_vector, encrypt_vector, generate_keys, HeParameters};
 
     #[test]
     fn test_encrypted_model_matches_plaintext_forward_pass() {
@@ -204,12 +204,8 @@ mod tests {
                     Activation::ReluApprox,
                 )
                 .unwrap(),
-                DenseLayer::new(
-                    vec![vec![1.2, -0.7]],
-                    vec![0.05],
-                    Activation::SigmoidApprox,
-                )
-                .unwrap(),
+                DenseLayer::new(vec![vec![1.2, -0.7]], vec![0.05], Activation::SigmoidApprox)
+                    .unwrap(),
             ],
             vec!["abnormal".to_string()],
         )
@@ -219,7 +215,9 @@ mod tests {
         let keys = generate_keys(HeParameters::default()).unwrap();
         let ciphertext = encrypt_vector(&keys.public_key, &input).unwrap();
 
-        let encrypted_output = model.infer_encrypted(&ciphertext, &keys.server_key).unwrap();
+        let encrypted_output = model
+            .infer_encrypted(&ciphertext, &keys.server_key)
+            .unwrap();
         let decrypted_output = decrypt_vector(&keys.client_key, &encrypted_output).unwrap();
         let plaintext_output = model.infer_plaintext(&input).unwrap();
 

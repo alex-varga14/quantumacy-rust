@@ -11,10 +11,10 @@
 use crate::error::{FedError, FedResult};
 use crate::model::ModelWeights;
 use rand::Rng;
-use rand_chacha::ChaCha20Rng;
 use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Differential privacy configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,8 +112,8 @@ impl DifferentialPrivacy {
             });
         }
 
-        let noise_std = (self.config.noise_multiplier * self.config.max_grad_norm as f64)
-            / num_clients as f64;
+        let noise_std =
+            (self.config.noise_multiplier * self.config.max_grad_norm as f64) / num_clients as f64;
 
         let flat = weights.flatten();
         let noisy: Vec<f32> = flat
@@ -157,9 +157,8 @@ impl DifferentialPrivacy {
         }
 
         // Simple Gaussian mechanism: ε = sensitivity * sqrt(2 * ln(1.25/δ)) / σ
-        let eps = sensitivity
-            * (2.0 * (1.25 / self.config.delta).ln()).sqrt()
-            / (sigma * sensitivity);
+        let eps =
+            sensitivity * (2.0 * (1.25 / self.config.delta).ln()).sqrt() / (sigma * sensitivity);
 
         eps.max(0.0)
     }
@@ -296,15 +295,12 @@ mod tests {
 
     #[test]
     fn test_gaussian_noise_distribution() {
-        let mut dp = DifferentialPrivacy::with_seed(
-            DpConfig::default(),
-            123,
-        );
+        let mut dp = DifferentialPrivacy::with_seed(DpConfig::default(), 123);
 
         let samples: Vec<f64> = (0..10_000).map(|_| dp.gaussian_noise(1.0)).collect();
         let mean: f64 = samples.iter().sum::<f64>() / samples.len() as f64;
-        let variance: f64 = samples.iter().map(|x| (x - mean).powi(2)).sum::<f64>()
-            / samples.len() as f64;
+        let variance: f64 =
+            samples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / samples.len() as f64;
 
         // Mean should be ~0, variance ~1
         assert!(mean.abs() < 0.05, "Mean: {mean}");

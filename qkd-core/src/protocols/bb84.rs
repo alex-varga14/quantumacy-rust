@@ -195,7 +195,11 @@ impl QkdProtocol for Bb84 {
 
         let channel = QuantumChannel::new(channel_config.clone());
 
-        info!(protocol = "BB84", qubits = num_qubits, "Starting key exchange");
+        info!(
+            protocol = "BB84",
+            qubits = num_qubits,
+            "Starting key exchange"
+        );
 
         // Step 1: Alice prepares
         let alice_qubits = self.alice_prepare(num_qubits, &mut rng);
@@ -208,7 +212,11 @@ impl QkdProtocol for Bb84 {
             .collect();
 
         let received_count = received.iter().filter(|q| q.is_some()).count();
-        debug!(sent = num_qubits, received = received_count, "Channel transmission complete");
+        debug!(
+            sent = num_qubits,
+            received = received_count,
+            "Channel transmission complete"
+        );
 
         // Step 3: Bob measures
         let bob_measurements = self.bob_measure(&received, &mut rng);
@@ -222,12 +230,18 @@ impl QkdProtocol for Bb84 {
         let (qber, alice_remaining, bob_remaining) =
             self.estimate_qber(&alice_sifted, &bob_sifted, &mut rng);
 
-        info!(qber = format!("{qber:.4}"), threshold = format!("{:.4}", self.qber_threshold),
-              "QBER estimation complete");
+        info!(
+            qber = format!("{qber:.4}"),
+            threshold = format!("{:.4}", self.qber_threshold),
+            "QBER estimation complete"
+        );
 
         let eavesdropping_detected = qber > self.qber_threshold;
         if eavesdropping_detected {
-            warn!(qber = format!("{qber:.4}"), "Eavesdropping detected — aborting");
+            warn!(
+                qber = format!("{qber:.4}"),
+                "Eavesdropping detected — aborting"
+            );
             return Err(QkdError::EavesdroppingDetected {
                 qber,
                 threshold: self.qber_threshold,
@@ -323,7 +337,10 @@ mod tests {
         };
 
         let result = bb84.execute(10_000, &channel);
-        assert!(matches!(result, Err(QkdError::EavesdroppingDetected { .. })));
+        assert!(matches!(
+            result,
+            Err(QkdError::EavesdroppingDetected { .. })
+        ));
     }
 
     #[test]

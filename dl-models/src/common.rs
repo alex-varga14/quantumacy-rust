@@ -2,11 +2,7 @@ use std::time::Instant;
 
 use fedlearn_core::error::{FedError, FedResult};
 use fedlearn_core::model::{
-    LayerWeights,
-    LocalTrainConfig,
-    ModelUpdate,
-    ModelWeights,
-    UpdateMetadata,
+    LayerWeights, LocalTrainConfig, ModelUpdate, ModelWeights, UpdateMetadata,
 };
 use he_inference::{Activation, DenseLayer, EncryptedModel};
 use rand::{Rng, SeedableRng};
@@ -90,7 +86,8 @@ impl DenseClassifier {
         let batch_size = config.batch_size.max(1);
 
         for _ in 0..config.epochs {
-            for (batch_data, batch_labels) in data.chunks(batch_size).zip(labels.chunks(batch_size)) {
+            for (batch_data, batch_labels) in data.chunks(batch_size).zip(labels.chunks(batch_size))
+            {
                 self.train_batch(batch_data, batch_labels, config.learning_rate as f32)?;
             }
         }
@@ -190,9 +187,11 @@ impl DenseClassifier {
         validate_layer(output_weight, &[self.output_dim, self.hidden_dim])?;
         validate_layer(output_bias, &[self.output_dim])?;
 
-        self.hidden_weights = unflatten_matrix(&hidden_weight.data, self.hidden_dim, self.input_dim);
+        self.hidden_weights =
+            unflatten_matrix(&hidden_weight.data, self.hidden_dim, self.input_dim);
         self.hidden_bias = hidden_bias.data.clone();
-        self.output_weights = unflatten_matrix(&output_weight.data, self.output_dim, self.hidden_dim);
+        self.output_weights =
+            unflatten_matrix(&output_weight.data, self.output_dim, self.hidden_dim);
         self.output_bias = output_bias.data.clone();
 
         Ok(())
@@ -265,8 +264,12 @@ impl DenseClassifier {
                     .zip(output_error.iter())
                     .map(|(weights, error)| weights[hidden_idx] * error)
                     .sum();
-                hidden_error[hidden_idx] =
-                    upstream * if hidden_linear[hidden_idx] > 0.0 { 1.0 } else { 0.0 };
+                hidden_error[hidden_idx] = upstream
+                    * if hidden_linear[hidden_idx] > 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    };
             }
 
             for hidden_idx in 0..self.hidden_dim {
@@ -312,7 +315,8 @@ impl DenseClassifier {
             .zip(self.hidden_bias.iter())
             .map(|(row, bias)| dot(row, input) + *bias)
             .collect();
-        let hidden_activation: Vec<f32> = hidden_linear.iter().map(|value| value.max(0.0)).collect();
+        let hidden_activation: Vec<f32> =
+            hidden_linear.iter().map(|value| value.max(0.0)).collect();
 
         let output_linear: Vec<f32> = self
             .output_weights
@@ -394,13 +398,13 @@ fn sigmoid(value: f32) -> f32 {
 }
 
 fn softmax(values: &[f32]) -> Vec<f32> {
-    let max = values
-        .iter()
-        .copied()
-        .fold(f32::NEG_INFINITY, f32::max);
+    let max = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let exp_values: Vec<f32> = values.iter().map(|value| (value - max).exp()).collect();
     let sum: f32 = exp_values.iter().sum();
-    exp_values.iter().map(|value| value / sum.max(EPSILON)).collect()
+    exp_values
+        .iter()
+        .map(|value| value / sum.max(EPSILON))
+        .collect()
 }
 
 fn argmax(values: &[f32]) -> usize {
@@ -417,7 +421,10 @@ fn flatten_matrix(matrix: &[Vec<f32>]) -> Vec<f32> {
 }
 
 fn unflatten_matrix(flat: &[f32], rows: usize, cols: usize) -> Vec<Vec<f32>> {
-    flat.chunks(cols).take(rows).map(|chunk| chunk.to_vec()).collect()
+    flat.chunks(cols)
+        .take(rows)
+        .map(|chunk| chunk.to_vec())
+        .collect()
 }
 
 fn validate_layer(layer: &LayerWeights, expected_shape: &[usize]) -> FedResult<()> {

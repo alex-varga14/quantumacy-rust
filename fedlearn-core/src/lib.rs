@@ -10,12 +10,12 @@
 //! implemented for Candle, Burn, or any tensor library.
 
 pub mod aggregation;
+pub mod error;
 pub mod model;
 pub mod privacy;
 pub mod round;
-pub mod error;
 
+pub use aggregation::FedAvg;
 pub use error::{FedError, FedResult};
 pub use model::{ModelUpdate, ModelWeights};
-pub use aggregation::FedAvg;
 pub use privacy::DifferentialPrivacy;

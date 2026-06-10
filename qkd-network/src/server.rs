@@ -11,7 +11,7 @@ use qkd_core::protocols::QkdProtocol;
 use qkd_core::types::ProtocolType;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::info;
 
 /// QKD Server state
 pub struct QkdServer {
@@ -33,29 +33,21 @@ impl QkdServer {
     }
 
     /// Generate a new QKD key using the configured protocol
-    pub async fn generate_key(
-        &self,
-        num_qubits: usize,
-    ) -> NetworkResult<String> {
+    pub async fn generate_key(&self, num_qubits: usize) -> NetworkResult<String> {
         let protocol: Box<dyn QkdProtocol> = match self.protocol {
             ProtocolType::BB84 => Box::new(Bb84::default()),
-            ProtocolType::SixState => {
-                Box::new(qkd_core::protocols::six_state::SixState::default())
-            }
-            ProtocolType::B92 => {
-                Box::new(qkd_core::protocols::b92::B92::default())
-            }
+            ProtocolType::SixState => Box::new(qkd_core::protocols::six_state::SixState::default()),
+            ProtocolType::B92 => Box::new(qkd_core::protocols::b92::B92::default()),
         };
 
         let channel_config = self.channel_config.clone();
 
         // Run protocol on a blocking thread (CPU-intensive)
-        let (key, stats) = tokio::task::spawn_blocking(move || {
-            protocol.execute(num_qubits, &channel_config)
-        })
-        .await
-        .map_err(|e| NetworkError::Connection(format!("Task join error: {e}")))?
-        .map_err(NetworkError::Qkd)?;
+        let (key, stats) =
+            tokio::task::spawn_blocking(move || protocol.execute(num_qubits, &channel_config))
+                .await
+                .map_err(|e| NetworkError::Connection(format!("Task join error: {e}")))?
+                .map_err(NetworkError::Qkd)?;
 
         info!(
             key_id = %key.key_id,

@@ -169,7 +169,11 @@ impl QkdProtocol for SixState {
         };
 
         let channel = QuantumChannel::new(channel_config.clone());
-        info!(protocol = "Six-State", qubits = num_qubits, "Starting key exchange");
+        info!(
+            protocol = "Six-State",
+            qubits = num_qubits,
+            "Starting key exchange"
+        );
 
         let alice_qubits = self.alice_prepare(num_qubits, &mut rng);
         let received: Vec<Option<Qubit>> = alice_qubits
@@ -227,7 +231,10 @@ impl QkdProtocol for SixState {
             eavesdropping_detected,
         };
 
-        info!(final_key_bits = stats.final_key_bits, "Six-State key exchange successful");
+        info!(
+            final_key_bits = stats.final_key_bits,
+            "Six-State key exchange successful"
+        );
         Ok((key, stats))
     }
 
@@ -258,7 +265,10 @@ mod tests {
         assert!(!key.material.is_empty());
         assert!(stats.qber < 0.05);
         // Six-State sifting rate should be ~33%
-        assert!(stats.sifting_rate > 0.28 && stats.sifting_rate < 0.40,
-            "sifting rate: {}", stats.sifting_rate);
+        assert!(
+            stats.sifting_rate > 0.28 && stats.sifting_rate < 0.40,
+            "sifting rate: {}",
+            stats.sifting_rate
+        );
     }
 }

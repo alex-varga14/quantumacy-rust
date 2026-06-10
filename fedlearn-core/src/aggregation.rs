@@ -17,7 +17,7 @@ use crate::error::{FedError, FedResult};
 use crate::model::{ModelUpdate, ModelWeights};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// FedAvg aggregation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,7 +134,9 @@ impl FedAvg {
         };
 
         if valid_updates.is_empty() {
-            return Err(FedError::Aggregation("All updates rejected as outliers".into()));
+            return Err(FedError::Aggregation(
+                "All updates rejected as outliers".into(),
+            ));
         }
 
         info!(
@@ -192,8 +194,8 @@ impl FedAvg {
         self.previous_global = Some(aggregated.clone());
         self.round += 1;
 
-        let avg_loss: f64 = valid_updates.iter().map(|u| u.loss).sum::<f64>()
-            / valid_updates.len() as f64;
+        let avg_loss: f64 =
+            valid_updates.iter().map(|u| u.loss).sum::<f64>() / valid_updates.len() as f64;
 
         info!(
             round = self.round,

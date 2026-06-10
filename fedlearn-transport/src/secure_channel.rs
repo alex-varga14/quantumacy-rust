@@ -4,9 +4,9 @@
 //! derived from QKD sessions. Supports key rotation per round.
 
 use crate::{TransportError, TransportResult};
-use qkd_network::secure_channel::{EncryptedMessage, SecureChannel};
 use fedlearn_core::model::{ModelUpdate, ModelWeights};
-use tracing::{debug};
+use qkd_network::secure_channel::{EncryptedMessage, SecureChannel};
+use tracing::debug;
 
 /// Encrypts federated learning payloads using QKD-derived keys
 pub struct SecureFLChannel {
@@ -27,8 +27,8 @@ impl SecureFLChannel {
 
     /// Encrypt a model update for transmission
     pub fn encrypt_update(&self, update: &ModelUpdate) -> TransportResult<EncryptedMessage> {
-        let serialized = serde_json::to_vec(update)
-            .map_err(|e| TransportError::Serialization(e.to_string()))?;
+        let serialized =
+            serde_json::to_vec(update).map_err(|e| TransportError::Serialization(e.to_string()))?;
 
         debug!(
             client = %update.client_id,
@@ -49,8 +49,7 @@ impl SecureFLChannel {
             .decrypt(msg)
             .map_err(|e| TransportError::Serialization(e.to_string()))?;
 
-        serde_json::from_slice(&plaintext)
-            .map_err(|e| TransportError::Serialization(e.to_string()))
+        serde_json::from_slice(&plaintext).map_err(|e| TransportError::Serialization(e.to_string()))
     }
 
     /// Encrypt model weights for distribution
@@ -70,8 +69,7 @@ impl SecureFLChannel {
             .decrypt(msg)
             .map_err(|e| TransportError::Serialization(e.to_string()))?;
 
-        serde_json::from_slice(&plaintext)
-            .map_err(|e| TransportError::Serialization(e.to_string()))
+        serde_json::from_slice(&plaintext).map_err(|e| TransportError::Serialization(e.to_string()))
     }
 
     pub fn key_id(&self) -> &str {

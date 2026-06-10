@@ -2,7 +2,10 @@ use crate::encrypt::{CiphertextVector, ServerKey};
 use crate::schemes::Activation;
 use crate::{HeError, HeResult};
 
-pub fn add_ciphertexts(left: &CiphertextVector, right: &CiphertextVector) -> HeResult<CiphertextVector> {
+pub fn add_ciphertexts(
+    left: &CiphertextVector,
+    right: &CiphertextVector,
+) -> HeResult<CiphertextVector> {
     ensure_compatible(left, right)?;
 
     Ok(CiphertextVector {
@@ -24,7 +27,10 @@ pub fn add_ciphertexts(left: &CiphertextVector, right: &CiphertextVector) -> HeR
     })
 }
 
-pub fn add_plaintext(ciphertext: &CiphertextVector, plaintext: &[f64]) -> HeResult<CiphertextVector> {
+pub fn add_plaintext(
+    ciphertext: &CiphertextVector,
+    plaintext: &[f64],
+) -> HeResult<CiphertextVector> {
     if ciphertext.len() != plaintext.len() {
         return Err(HeError::Operation(format!(
             "plaintext length {} does not match ciphertext length {}",
@@ -47,10 +53,17 @@ pub fn add_plaintext(ciphertext: &CiphertextVector, plaintext: &[f64]) -> HeResu
     })
 }
 
-pub fn multiply_plaintext(ciphertext: &CiphertextVector, scalar: f64) -> HeResult<CiphertextVector> {
+pub fn multiply_plaintext(
+    ciphertext: &CiphertextVector,
+    scalar: f64,
+) -> HeResult<CiphertextVector> {
     Ok(CiphertextVector {
         key_id: ciphertext.key_id.clone(),
-        encoded: ciphertext.encoded.iter().map(|value| value * scalar).collect(),
+        encoded: ciphertext
+            .encoded
+            .iter()
+            .map(|value| value * scalar)
+            .collect(),
         mask: ciphertext.mask.iter().map(|value| value * scalar).collect(),
         scale: ciphertext.scale,
         noise_budget: ciphertext.noise_budget,
@@ -70,12 +83,7 @@ pub fn multiply_ciphertexts(
         .map(|(a, b)| a * b)
         .collect();
 
-    server_key.refresh_ciphertext(
-        &left.key_id,
-        &products,
-        left.scale.max(right.scale),
-        1,
-    )
+    server_key.refresh_ciphertext(&left.key_id, &products, left.scale.max(right.scale), 1)
 }
 
 pub fn apply_polynomial(
@@ -118,7 +126,9 @@ pub fn linear_layer(
     server_key: &ServerKey,
 ) -> HeResult<CiphertextVector> {
     if weights.is_empty() {
-        return Err(HeError::Operation("linear layer requires weights".to_string()));
+        return Err(HeError::Operation(
+            "linear layer requires weights".to_string(),
+        ));
     }
     if weights.len() != bias.len() {
         return Err(HeError::Operation(format!(
@@ -181,7 +191,11 @@ mod tests {
         let sum = add_ciphertexts(&left, &right).unwrap();
         let decrypted = decrypt_vector(&keys.client_key, &sum).unwrap();
 
-        assert_eq!(decrypted, vec![1.5, 0.0]);
+        let expected = [1.5, 0.0];
+        assert_eq!(decrypted.len(), expected.len());
+        for (got, want) in decrypted.iter().zip(expected.iter()) {
+            assert!((got - want).abs() < 1e-9, "expected {want}, got {got}");
+        }
     }
 
     #[test]
@@ -207,7 +221,8 @@ mod tests {
         let keys = generate_keys(HeParameters::default()).unwrap();
         let input = encrypt_vector(&keys.public_key, &[-1.0, 0.0, 1.0]).unwrap();
 
-        let activated = apply_activation(&input, Activation::SigmoidApprox, &keys.server_key).unwrap();
+        let activated =
+            apply_activation(&input, Activation::SigmoidApprox, &keys.server_key).unwrap();
         let decrypted = decrypt_vector(&keys.client_key, &activated).unwrap();
 
         assert!(decrypted[0] < decrypted[2]);

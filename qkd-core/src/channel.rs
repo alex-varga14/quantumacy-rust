@@ -98,12 +98,7 @@ impl QuantumChannel {
     }
 
     /// Simulate Eve's intercept-resend attack
-    fn eavesdrop<R: Rng>(
-        &self,
-        qubit: &Qubit,
-        eve: &EavesdropperConfig,
-        rng: &mut R,
-    ) -> Qubit {
+    fn eavesdrop<R: Rng>(&self, qubit: &Qubit, eve: &EavesdropperConfig, rng: &mut R) -> Qubit {
         match eve.strategy {
             EveStrategy::InterceptResend => {
                 // Eve picks a random basis to measure
@@ -261,7 +256,9 @@ mod tests {
 
         let measured_rate = errors as f64 / n as f64;
         // Should be roughly 5% (noise flips to random, so ~50% of noise_rate)
-        assert!(measured_rate > 0.03 && measured_rate < 0.08,
-            "measured noise flip rate: {measured_rate}");
+        assert!(
+            measured_rate > 0.03 && measured_rate < 0.08,
+            "measured noise flip rate: {measured_rate}"
+        );
     }
 }

@@ -10,10 +10,15 @@
 //! - **P2P**: Direct key exchange between two peers
 //! - **Secure Channel**: AES-GCM encrypted channel using QKD-derived keys
 
-pub mod server;
+// `NetworkError` carries a `tonic::Status` variant, which is large by design.
+// Boxing the error would propagate API churn through every caller; for the
+// MVP we accept the larger `Result` shape rather than reshape the public API.
+#![allow(clippy::result_large_err)]
+
 pub mod client;
 pub mod p2p;
 pub mod secure_channel;
+pub mod server;
 
 use thiserror::Error;
 

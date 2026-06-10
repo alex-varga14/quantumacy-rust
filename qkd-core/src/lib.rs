@@ -12,14 +12,14 @@
 //! - **Privacy Amplification**: Universal hashing to distill secure final keys
 //! - **Key Manager**: Thread-safe key storage with automatic zeroization
 
-pub mod protocols;
 pub mod channel;
-pub mod error_correction;
-pub mod privacy_amplification;
-pub mod key_manager;
 pub mod error;
+pub mod error_correction;
+pub mod key_manager;
+pub mod privacy_amplification;
+pub mod protocols;
 pub mod types;
 
 pub use error::{QkdError, QkdResult};
-pub use types::*;
 pub use key_manager::KeyManager;
+pub use types::*;

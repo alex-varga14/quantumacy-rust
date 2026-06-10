@@ -21,10 +21,23 @@ use qkd_network::secure_channel::{EncryptedMessage, SecureChannel};
 use qkd_network::server::QkdServer;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 use tracing::{info, warn};
+
+/// Capacity of the broadcast channel used to publish round transitions to
+/// `SubscribeRounds` listeners. A small buffer is enough; lagging subscribers
+/// fall back to the snapshot already delivered at subscription time.
+const ROUND_BROADCAST_CAPACITY: usize = 32;
+
+/// Payload broadcast on each round transition.
+#[derive(Debug, Clone)]
+pub struct RoundEvent {
+    pub round: u32,
+    pub action: String,
+    pub payload: Vec<u8>,
+}
 
 /// Server-side FL aggregation service
 pub struct AggregationService {
@@ -44,6 +57,8 @@ pub struct AggregationService {
     clients: Arc<RwLock<HashMap<String, ClientInfo>>>,
     /// Training history
     history: Arc<RwLock<Vec<RoundResult>>>,
+    /// Broadcast sender for round transitions
+    round_tx: broadcast::Sender<RoundEvent>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +108,7 @@ impl AggregationService {
             .as_ref()
             .map(|c| DifferentialPrivacy::new(c.clone()));
 
+        let (round_tx, _) = broadcast::channel(ROUND_BROADCAST_CAPACITY);
         Self {
             global_weights: Arc::new(RwLock::new(initial_weights)),
             aggregator: Arc::new(RwLock::new(FedAvg::new(config.fedavg.clone()))),
@@ -102,7 +118,15 @@ impl AggregationService {
             pending_updates: Arc::new(RwLock::new(Vec::new())),
             clients: Arc::new(RwLock::new(HashMap::new())),
             history: Arc::new(RwLock::new(Vec::new())),
+            round_tx,
         }
+    }
+
+    /// Subscribe to round-transition events. The returned receiver fires on
+    /// every successful aggregation; cold subscribers should also call
+    /// [`status_snapshot`] to seed their initial state.
+    pub fn subscribe(&self) -> broadcast::Receiver<RoundEvent> {
+        self.round_tx.subscribe()
     }
 
     /// Register a new client
@@ -183,6 +207,18 @@ impl AggregationService {
                     info!("Early stopping triggered");
                 }
 
+                let action = if round >= self.config.num_rounds {
+                    "complete"
+                } else {
+                    "train"
+                };
+                let payload = serde_json::to_vec(&new_weights).unwrap_or_default();
+                let _ = self.round_tx.send(RoundEvent {
+                    round,
+                    action: action.to_string(),
+                    payload,
+                });
+
                 Ok(Some(new_weights))
             }
             Err(e) => {
@@ -222,10 +258,7 @@ impl AggregationService {
             total_rounds: self.config.num_rounds,
             participating_clients: self.clients.read().len(),
             global_loss: latest.as_ref().map(|r| r.avg_loss).unwrap_or(0.0),
-            global_accuracy: latest
-                .as_ref()
-                .and_then(|r| r.accuracy)
-                .unwrap_or(0.0),
+            global_accuracy: latest.as_ref().and_then(|r| r.accuracy).unwrap_or(0.0),
             state: state.to_string(),
         }
     }
@@ -304,7 +337,12 @@ impl GrpcKeyExchangeService {
         Ok(())
     }
 
-    async fn mint_key(&self, session_id: &str, client_id: &str, key_bits: u32) -> Result<KeyResponse, Status> {
+    async fn mint_key(
+        &self,
+        session_id: &str,
+        client_id: &str,
+        key_bits: u32,
+    ) -> Result<KeyResponse, Status> {
         self.validate_session(session_id, client_id)?;
 
         let num_qubits = usize::max((key_bits as usize).saturating_mul(16), 1024);
@@ -322,7 +360,7 @@ impl GrpcKeyExchangeService {
 
         Ok(KeyResponse {
             key_id,
-            key_material: key.material,
+            key_material: key.material.clone(),
             expires_at: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as u64,
         })
     }
@@ -390,10 +428,14 @@ impl FederatedLearning for GrpcFederatedLearningService {
 
         let update = self.decode_update(&request)?;
         if update.client_id != request.client_id {
-            return Err(Status::permission_denied("update client_id does not match session"));
+            return Err(Status::permission_denied(
+                "update client_id does not match session",
+            ));
         }
         if update.metadata.round != request.round {
-            return Err(Status::invalid_argument("update round does not match request round"));
+            return Err(Status::invalid_argument(
+                "update round does not match request round",
+            ));
         }
 
         let accepted = self
@@ -429,9 +471,9 @@ impl FederatedLearning for GrpcFederatedLearningService {
     ) -> Result<Response<StatusResponse>, Status> {
         let request = request.into_inner();
         let sessions = self.runtime.sessions.read();
-        let session = sessions
-            .get(&request.session_id)
-            .ok_or_else(|| Status::not_found(format!("Session not found: {}", request.session_id)))?;
+        let session = sessions.get(&request.session_id).ok_or_else(|| {
+            Status::not_found(format!("Session not found: {}", request.session_id))
+        })?;
         let client_id = session.client_id.clone();
         drop(sessions);
         self.validate_session(&request.session_id, &client_id)?;
@@ -454,23 +496,54 @@ impl FederatedLearning for GrpcFederatedLearningService {
         let request = request.into_inner();
         self.validate_session(&request.session_id, &request.client_id)?;
 
+        // Snapshot the current state so subscribers don't have to wait for the
+        // next aggregation to learn where the platform is.
         let status = self.runtime.aggregation.status_snapshot();
         let payload = serde_json::to_vec(&self.runtime.aggregation.get_global_weights())
             .map_err(|e| Status::internal(format!("Unable to serialize weights: {e}")))?;
-        let action = if status.state == "complete" {
+        let initial_action = if status.state == "complete" {
             "complete"
         } else {
             "train"
         };
 
-        let (tx, rx) = mpsc::channel(1);
+        // Subscribe BEFORE sending the snapshot so we don't miss a round event
+        // that fires between the snapshot and the broadcast subscribe.
+        let mut rx_round = self.runtime.aggregation.subscribe();
+
+        let (tx, rx) = mpsc::channel::<Result<RoundNotification, Status>>(ROUND_BROADCAST_CAPACITY);
         tx.send(Ok(RoundNotification {
             round: status.current_round,
-            action: action.to_string(),
+            action: initial_action.to_string(),
             payload,
         }))
         .await
         .map_err(|e| Status::internal(format!("Unable to publish notification: {e}")))?;
+
+        tokio::spawn(async move {
+            loop {
+                match rx_round.recv().await {
+                    Ok(event) => {
+                        if tx
+                            .send(Ok(RoundNotification {
+                                round: event.round,
+                                action: event.action,
+                                payload: event.payload,
+                            }))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        warn!(skipped, "subscribe_rounds subscriber lagged");
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
 
         Ok(Response::new(ReceiverStream::new(rx)))
     }
@@ -494,7 +567,9 @@ impl KeyExchange for GrpcKeyExchangeService {
         request: Request<RotateKeyRequest>,
     ) -> Result<Response<KeyResponse>, Status> {
         let request = request.into_inner();
-        let key = self.mint_key(&request.session_id, &request.client_id, 256).await?;
+        let key = self
+            .mint_key(&request.session_id, &request.client_id, 256)
+            .await?;
         Ok(Response::new(key))
     }
 }
@@ -545,7 +620,11 @@ mod tests {
         }
     }
 
-    fn make_runtime() -> (Arc<AggregationService>, Arc<QkdServer>, GrpcFederatedLearningService) {
+    fn make_runtime() -> (
+        Arc<AggregationService>,
+        Arc<QkdServer>,
+        GrpcFederatedLearningService,
+    ) {
         let aggregation = Arc::new(AggregationService::new(
             make_weights(vec![0.0, 0.0]),
             TrainingConfig::default(),
@@ -564,16 +643,49 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_subscribe_observes_round_transition() {
+        let service =
+            AggregationService::new(make_weights(vec![0.0, 0.0]), TrainingConfig::default());
+
+        // Subscribe BEFORE submitting updates so the broadcast event is captured.
+        let mut rx = service.subscribe();
+
+        service.register_client("c1".to_string(), 1000);
+        service.register_client("c2".to_string(), 2000);
+        service
+            .submit_update(make_update("c1", vec![1.0, 2.0], 0))
+            .unwrap();
+        service
+            .submit_update(make_update("c2", vec![3.0, 4.0], 0))
+            .unwrap();
+        let aggregated = service.try_aggregate().unwrap();
+        assert!(aggregated.is_some());
+
+        let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("subscriber timed out waiting for round event")
+            .expect("subscriber lost broadcast channel");
+        assert_eq!(event.round, 1);
+        assert_eq!(event.action, "train");
+        assert!(!event.payload.is_empty());
+    }
+
     #[test]
     fn test_register_and_submit() {
-        let service = AggregationService::new(make_weights(vec![0.0, 0.0]), TrainingConfig::default());
+        let service =
+            AggregationService::new(make_weights(vec![0.0, 0.0]), TrainingConfig::default());
 
         service.register_client("c1".to_string(), 1000);
         service.register_client("c2".to_string(), 2000);
         assert_eq!(service.num_clients(), 2);
 
-        service.submit_update(make_update("c1", vec![1.0, 2.0], 0)).unwrap();
-        service.submit_update(make_update("c2", vec![3.0, 4.0], 0)).unwrap();
+        service
+            .submit_update(make_update("c1", vec![1.0, 2.0], 0))
+            .unwrap();
+        service
+            .submit_update(make_update("c2", vec![3.0, 4.0], 0))
+            .unwrap();
 
         let result = service.try_aggregate().unwrap();
         assert!(result.is_some());
@@ -665,8 +777,18 @@ mod tests {
         let fl_a = SecureFLChannel::new(channel_a, key_a.key_id.clone());
         let fl_b = SecureFLChannel::new(channel_b, key_b.key_id.clone());
 
-        let enc_a = serde_json::to_vec(&fl_a.encrypt_update(&make_update("client-a", vec![1.0, 2.0], 0)).unwrap()).unwrap();
-        let enc_b = serde_json::to_vec(&fl_b.encrypt_update(&make_update("client-b", vec![3.0, 4.0], 0)).unwrap()).unwrap();
+        let enc_a = serde_json::to_vec(
+            &fl_a
+                .encrypt_update(&make_update("client-a", vec![1.0, 2.0], 0))
+                .unwrap(),
+        )
+        .unwrap();
+        let enc_b = serde_json::to_vec(
+            &fl_b
+                .encrypt_update(&make_update("client-b", vec![3.0, 4.0], 0))
+                .unwrap(),
+        )
+        .unwrap();
 
         let resp_a = grpc
             .submit_update(Request::new(UpdateRequest {

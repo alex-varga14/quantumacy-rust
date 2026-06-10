@@ -18,11 +18,7 @@ const NUM_PASSES: usize = 4;
 ///
 /// In a real implementation, only parities are exchanged — here we simulate
 /// the classical channel communication.
-pub fn correct(
-    alice_bits: &[u8],
-    bob_bits: &[u8],
-    estimated_qber: f64,
-) -> QkdResult<Vec<u8>> {
+pub fn correct(alice_bits: &[u8], bob_bits: &[u8], estimated_qber: f64) -> QkdResult<Vec<u8>> {
     if alice_bits.len() != bob_bits.len() {
         return Err(QkdError::ErrorCorrection(
             "Alice and Bob key lengths differ".into(),
@@ -74,8 +70,7 @@ pub fn correct(
         // Divide into blocks and check parities
         for chunk_start in (0..n).step_by(block_size) {
             let chunk_end = (chunk_start + block_size).min(n);
-            let block_indices: Vec<usize> =
-                indices[chunk_start..chunk_end].to_vec();
+            let block_indices: Vec<usize> = indices[chunk_start..chunk_end].to_vec();
 
             pass_blocks.push(block_indices.clone());
 
@@ -90,8 +85,7 @@ pub fn correct(
 
             if alice_parity != bob_parity {
                 // Binary search for the error within this block
-                if let Some(error_pos) =
-                    binary_search_error(alice_bits, &corrected, &block_indices)
+                if let Some(error_pos) = binary_search_error(alice_bits, &corrected, &block_indices)
                 {
                     corrected[error_pos] ^= 1; // Flip the error bit
                     debug!(pass, position = error_pos, "Corrected error");
@@ -111,11 +105,9 @@ pub fn correct(
                                         .fold(0u8, |acc, b| acc ^ b);
 
                                     if a_par != b_par {
-                                        if let Some(pos) = binary_search_error(
-                                            alice_bits,
-                                            &corrected,
-                                            prev_block,
-                                        ) {
+                                        if let Some(pos) =
+                                            binary_search_error(alice_bits, &corrected, prev_block)
+                                        {
                                             corrected[pos] ^= 1;
                                             debug!(
                                                 cascade_from = pass,

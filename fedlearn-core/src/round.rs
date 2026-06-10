@@ -130,10 +130,7 @@ pub fn execute_round(
 }
 
 /// Check early stopping criteria
-pub fn should_stop_early(
-    history: &[RoundResult],
-    config: &TrainingConfig,
-) -> bool {
+pub fn should_stop_early(history: &[RoundResult], config: &TrainingConfig) -> bool {
     if history.len() < config.patience as usize + 1 {
         return false;
     }
@@ -143,8 +140,11 @@ pub fn should_stop_early(
         if let Some(latest) = history.last() {
             if let Some(acc) = latest.accuracy {
                 if acc >= target {
-                    info!(accuracy = format!("{acc:.4}"), target = format!("{target:.4}"),
-                          "Target accuracy reached");
+                    info!(
+                        accuracy = format!("{acc:.4}"),
+                        target = format!("{target:.4}"),
+                        "Target accuracy reached"
+                    );
                     return true;
                 }
             }

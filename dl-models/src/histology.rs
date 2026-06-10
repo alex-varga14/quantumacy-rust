@@ -86,11 +86,7 @@ impl FederatedModel for HistologyModel {
             .train_local(&self.client_id, data, labels, config)
     }
 
-    fn evaluate(
-        &self,
-        data: &[Vec<f32>],
-        labels: &[Vec<f32>],
-    ) -> FedResult<(f64, f64)> {
+    fn evaluate(&self, data: &[Vec<f32>], labels: &[Vec<f32>]) -> FedResult<(f64, f64)> {
         self.network.evaluate(data, labels)
     }
 
@@ -103,7 +99,7 @@ impl FederatedModel for HistologyModel {
 mod tests {
     use super::*;
     use fedlearn_core::model::FederatedModel;
-    use he_core::{HeParameters, decrypt_vector, encrypt_vector, generate_keys};
+    use he_core::{decrypt_vector, encrypt_vector, generate_keys, HeParameters};
 
     fn synthetic_dataset() -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
         let data = vec![

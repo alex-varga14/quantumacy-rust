@@ -54,7 +54,9 @@ impl HeParameters {
 
     pub fn validate(&self) -> HeResult<()> {
         if self.slots == 0 {
-            return Err(HeError::KeyGen("slots must be greater than zero".to_string()));
+            return Err(HeError::KeyGen(
+                "slots must be greater than zero".to_string(),
+            ));
         }
         if self.scaling_factor <= 0.0 {
             return Err(HeError::KeyGen(

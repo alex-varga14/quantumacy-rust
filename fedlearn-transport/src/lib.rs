@@ -4,8 +4,13 @@
 //! Provides secure communication between FL clients and the aggregation server
 //! using quantum-derived keys for authenticated encryption.
 
-pub mod secure_channel;
+// `tonic::Status` and `qkd_network::NetworkError` are inherently large variants.
+// Boxing the error type would force API churn through every consumer; the MVP
+// keeps the existing surface and accepts the larger `Result`.
+#![allow(clippy::result_large_err)]
+
 pub mod grpc_service;
+pub mod secure_channel;
 pub mod proto {
     tonic::include_proto!("quantumacy.fedlearn");
 }

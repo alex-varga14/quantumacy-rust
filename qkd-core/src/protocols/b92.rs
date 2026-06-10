@@ -72,11 +72,7 @@ impl B92 {
     /// Bob measures and reports conclusive/inconclusive results.
     /// Conclusive: Bob measures |1⟩ in rectilinear (means Alice sent |+⟩, bit=1)
     ///             or |−⟩ in diagonal (means Alice sent |0⟩, bit=0)
-    fn bob_measure<R: Rng>(
-        &self,
-        received: &[Option<Qubit>],
-        rng: &mut R,
-    ) -> Vec<Option<u8>> {
+    fn bob_measure<R: Rng>(&self, received: &[Option<Qubit>], rng: &mut R) -> Vec<Option<u8>> {
         received
             .iter()
             .map(|q| {
@@ -114,11 +110,7 @@ impl B92 {
     }
 
     /// Sift: keep only conclusive detections
-    fn sift(
-        &self,
-        alice_bits: &[u8],
-        bob_results: &[Option<u8>],
-    ) -> (Vec<u8>, Vec<u8>) {
+    fn sift(&self, alice_bits: &[u8], bob_results: &[Option<u8>]) -> (Vec<u8>, Vec<u8>) {
         let mut a_sifted = Vec::new();
         let mut b_sifted = Vec::new();
 
@@ -145,7 +137,11 @@ impl QkdProtocol for B92 {
         };
 
         let channel = QuantumChannel::new(channel_config.clone());
-        info!(protocol = "B92", qubits = num_qubits, "Starting key exchange");
+        info!(
+            protocol = "B92",
+            qubits = num_qubits,
+            "Starting key exchange"
+        );
 
         let (alice_bits, alice_qubits) = self.alice_prepare(num_qubits, &mut rng);
 
@@ -232,7 +228,10 @@ impl QkdProtocol for B92 {
             eavesdropping_detected: false,
         };
 
-        info!(final_key_bits = stats.final_key_bits, "B92 key exchange successful");
+        info!(
+            final_key_bits = stats.final_key_bits,
+            "B92 key exchange successful"
+        );
         Ok((key, stats))
     }
 
@@ -264,7 +263,10 @@ mod tests {
         assert!(!key.material.is_empty());
         assert!(stats.qber < 0.05);
         // B92 sifting rate ~25%
-        assert!(stats.sifting_rate > 0.15 && stats.sifting_rate < 0.35,
-            "sifting rate: {}", stats.sifting_rate);
+        assert!(
+            stats.sifting_rate > 0.15 && stats.sifting_rate < 0.35,
+            "sifting rate: {}",
+            stats.sifting_rate
+        );
     }
 }

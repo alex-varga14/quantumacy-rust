@@ -33,22 +33,11 @@ pub enum HeError {
 pub type HeResult<T> = Result<T, HeError>;
 
 pub use encrypt::{
-    CiphertextVector,
-    ClientKey,
-    HeKeySet,
-    PublicKey,
-    ServerKey,
-    decrypt_vector,
-    encrypt_vector,
-    generate_keys,
+    decrypt_vector, encrypt_vector, generate_keys, CiphertextVector, ClientKey, HeKeySet,
+    PublicKey, ServerKey,
 };
 pub use operations::{
-    add_ciphertexts,
-    add_plaintext,
-    apply_activation,
-    apply_polynomial,
-    linear_layer,
-    multiply_ciphertexts,
-    multiply_plaintext,
+    add_ciphertexts, add_plaintext, apply_activation, apply_polynomial, linear_layer,
+    multiply_ciphertexts, multiply_plaintext,
 };
 pub use schemes::{Activation, HeParameters, HeScheme};

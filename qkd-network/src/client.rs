@@ -1,6 +1,5 @@
 //! QKD client for requesting keys from a QKD server.
 
-use crate::NetworkResult;
 use tracing::info;
 
 /// Client configuration

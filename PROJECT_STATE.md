@@ -1,10 +1,10 @@
 # Quantumacy-RS: Project State
 
-**Date**: 2026-03-12
-**MVP Status**: READY
-**Total Rust LOC**: ~6,300
-**Tests Authored**: 63
-**Local Test Execution**: Pending in current environment (`cargo` and `rustc` are not on `PATH`)
+**Date**: 2026-04-25
+**MVP Status**: RESEARCH-PARITY MVP READY
+**Total Rust LOC**: ~7,200 (incl. demos + server binary)
+**Tests Authored**: 65
+**Local Test Execution**: ✅ Verified — `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are both green.
 **Workspace Crates**: 7
 
 ---
@@ -59,14 +59,15 @@ Federated learning primitives:
 - **Round orchestration** (`round.rs`): Single-round execution with DP integration and early stopping controls.
 
 ### `fedlearn-transport` — MVP COMPLETE
-**5 tests authored**
+**6 tests authored** (+ 1 server binary smoke-tested)
 
 Transport and service layer:
 - **Secure FL channel** (`secure_channel.rs`): QKD-backed AES-GCM transport for `ModelUpdate` and `ModelWeights`.
-- **Generated protobufs** (`build.rs`, `src/lib.rs`): `tonic-build` code generation from `proto/fedlearn.proto`.
-- **Aggregation gRPC service** (`grpc_service.rs`): Registration, model fetch, update submission, status queries, and round subscription.
+- **Generated protobufs** (`build.rs`, `src/lib.rs`): `tonic-build` code generation from `proto/fedlearn.proto`. Build script uses `protoc-bin-vendored` as a fallback so constrained environments build without a system `protoc`.
+- **Aggregation gRPC service** (`grpc_service.rs`): Registration, model fetch, update submission, status queries, and a broadcast-backed round subscription that fires on every aggregation transition.
 - **Key exchange gRPC service** (`grpc_service.rs`): Session-scoped key issuance and rotation backed by the QKD server.
-- **Integration flow** (`tests/mvp_flow.rs`): Registration, key minting, encrypted submission, and aggregation round-trip.
+- **Server binary** (`src/bin/server.rs`): Long-running gRPC server with env-based config (`QUANTUMACY_BIND_ADDR`, `QUANTUMACY_PROTOCOL`, `QUANTUMACY_KEY_BITS`, `QUANTUMACY_ROUNDS`, `QUANTUMACY_MIN_CLIENTS`) and `tracing-subscriber`.
+- **Integration flow** (`tests/mvp_flow.rs`): Registration, key minting, encrypted submission, aggregation round-trip, and a `SubscribeRounds` stream test that observes a round transition after aggregation.
 
 ### `he-core` — MVP COMPLETE
 **7 tests authored**
@@ -111,15 +112,15 @@ Medical-imaging model layer:
 
 | Crate | Tests Authored | Status |
 |------|----------------|--------|
-| `qkd-core` | 21 | ✅ Authored |
-| `qkd-network` | 3 | ✅ Authored |
-| `fedlearn-core` | 19 | ✅ Authored |
-| `fedlearn-transport` | 5 | ✅ Authored |
-| `he-core` | 7 | ✅ Authored |
-| `he-inference` | 4 | ✅ Authored |
-| `dl-models` | 4 | ✅ Authored |
+| `qkd-core` | 21 | ✅ Passing |
+| `qkd-network` | 3 | ✅ Passing |
+| `fedlearn-core` | 19 | ✅ Passing |
+| `fedlearn-transport` | 6 (+ 1 binary) | ✅ Passing |
+| `he-core` | 7 | ✅ Passing |
+| `he-inference` | 4 | ✅ Passing |
+| `dl-models` | 4 | ✅ Passing |
 
-**Important note**: the tests were added and updated, but they were **not executed in this Codex session** because the current environment does not expose `cargo` or `rustc`.
+`cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are both green on macOS / Linux. The constrained-env path (no system `protoc`) is supported via `protoc-bin-vendored` and exercised by the same workspace test command.
 
 Key newly covered scenarios:
 - HE encrypt/decrypt roundtrip
@@ -135,15 +136,18 @@ Key newly covered scenarios:
 
 ## Known Issues / Technical Debt
 
-1. **Local verification blocked**: `cargo` and `rustc` are still unavailable on `PATH` in the current environment, so compilation and test execution remain pending.
-2. **HE is simulation-grade, not production-grade**: `he-core` currently models CKKS-style workflows but does not yet provide true cryptographic homomorphic security. Replacing internals with `tfhe-rs` is the main Phase 4 production follow-up.
-3. **Medical models are lightweight baselines**: `dl-models` currently uses small dense networks rather than Candle CNNs. This is enough for the MVP integration path, but not a production medical-imaging stack.
-4. **P2P remains simulated**: `qkd-network/src/p2p.rs` still models both peers locally instead of running real network transport.
-5. **CASCADE remains simulation-oriented**: Reconciliation still uses Alice’s bits as canonical output rather than a full two-party reconciliation transcript.
-6. **Privacy amplification is simplified**: SHA-256 counter-style compression stands in for a stronger universal-hash construction.
-7. **No TLS overlay yet**: QKD-secured channels do not yet run alongside a rustls/TLS transport layer.
-8. **Round streaming is minimal**: `SubscribeRounds` still emits a snapshot-style stream rather than a long-lived broadcast feed.
-9. **Key bootstrap is still permissive for MVP**: `KeyExchange` returns raw key bytes to bootstrap the secure transport.
+1. **HE is simulation-grade, not production-grade**: `he-core` currently models CKKS-style workflows but does not yet provide true cryptographic homomorphic security. Replacing internals with `tfhe-rs` is the main Phase 4 production follow-up.
+2. **Medical models are lightweight baselines**: `dl-models` currently uses small dense networks rather than Candle CNNs. This is enough for the MVP integration path, but not a production medical-imaging stack.
+3. **P2P remains simulated**: `qkd-network/src/p2p.rs` still models both peers locally instead of running real network transport.
+4. **CASCADE remains simulation-oriented**: Reconciliation still uses Alice's bits as canonical output rather than a full two-party reconciliation transcript.
+5. **Privacy amplification is simplified**: SHA-256 counter-style compression stands in for a stronger universal-hash construction.
+6. **No TLS overlay yet**: QKD-secured channels do not yet run alongside a rustls/TLS transport layer.
+7. **Key bootstrap is still permissive for MVP**: `KeyExchange` returns raw key bytes to bootstrap the secure transport.
+
+Resolved during the research-parity MVP push (2026-04-25):
+- `cargo test --workspace` is green; `protoc` is vendored via `protoc-bin-vendored`.
+- `SubscribeRounds` is now backed by a `tokio::sync::broadcast` channel that fires on every successful aggregation.
+- All four CERN modules have runnable single-command Rust demos (see [CERN_PARITY.md](CERN_PARITY.md)).
 
 ---
 
@@ -165,16 +169,24 @@ Production readiness still depends on:
 
 ## Build & Run
 
+Workspace-wide verification:
+
 ```bash
-cargo check
-cargo test
-cargo test -p he-core
-cargo test -p he-inference
-cargo test -p dl-models
-cargo test -p fedlearn-transport
+cargo check --workspace --all-targets
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-These commands are the intended verification path once a Rust toolchain is available in the environment.
+Module parity demos (see [CERN_PARITY.md](CERN_PARITY.md) for the side-by-side mapping):
+
+```bash
+cargo run -p qkd-network        --example qkd_p2p_demo
+cargo run -p qkd-network        --example qkd_client_server_demo
+cargo run -p fedlearn-transport --example local_platform_demo -- --clients 4 --rounds 5
+cargo run -p dl-models          --example chestscan_federated_demo
+cargo run -p he-inference       --example three_party_demo
+cargo run -p fedlearn-transport --bin server
+```
 
 ---
 

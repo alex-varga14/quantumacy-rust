@@ -54,11 +54,7 @@ impl KeyManager {
 
         if self.keys.len() >= self.config.max_keys {
             // Evict oldest key
-            if let Some(oldest) = self
-                .keys
-                .iter()
-                .min_by_key(|entry| entry.value().timestamp)
-            {
+            if let Some(oldest) = self.keys.iter().min_by_key(|entry| entry.value().timestamp) {
                 let id = oldest.key().clone();
                 drop(oldest);
                 self.keys.remove(&id);

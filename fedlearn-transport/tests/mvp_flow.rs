@@ -6,7 +6,7 @@ use fedlearn_transport::grpc_service::{AggregationService, GrpcFederatedLearning
 use fedlearn_transport::proto::federated_learning_server::FederatedLearning;
 use fedlearn_transport::proto::key_exchange_server::KeyExchange;
 use fedlearn_transport::proto::{
-    KeyRequest, ModelRequest, RegisterRequest, StatusRequest, UpdateRequest,
+    KeyRequest, ModelRequest, RegisterRequest, StatusRequest, SubscribeRequest, UpdateRequest,
 };
 use fedlearn_transport::secure_channel::SecureFLChannel;
 use qkd_core::channel::ChannelConfig;
@@ -133,8 +133,18 @@ async fn mvp_round_trip_over_public_grpc_api() {
     let fl_a = SecureFLChannel::new(channel_a, key_a.key_id.clone());
     let fl_b = SecureFLChannel::new(channel_b, key_b.key_id.clone());
 
-    let payload_a = serde_json::to_vec(&fl_a.encrypt_update(&make_update("alice", vec![1.0, 2.0], 0)).unwrap()).unwrap();
-    let payload_b = serde_json::to_vec(&fl_b.encrypt_update(&make_update("bob", vec![3.0, 4.0], 0)).unwrap()).unwrap();
+    let payload_a = serde_json::to_vec(
+        &fl_a
+            .encrypt_update(&make_update("alice", vec![1.0, 2.0], 0))
+            .unwrap(),
+    )
+    .unwrap();
+    let payload_b = serde_json::to_vec(
+        &fl_b
+            .encrypt_update(&make_update("bob", vec![3.0, 4.0], 0))
+            .unwrap(),
+    )
+    .unwrap();
 
     let submit_a = fl_service
         .submit_update(Request::new(UpdateRequest {
@@ -174,4 +184,65 @@ async fn mvp_round_trip_over_public_grpc_api() {
     assert_eq!(status.current_round, 1);
     assert_eq!(status.participating_clients, 2);
     assert_eq!(aggregation.get_global_weights().flatten(), vec![2.0, 3.0]);
+}
+
+#[tokio::test]
+async fn subscribe_rounds_observes_round_transition() {
+    use tokio_stream::StreamExt;
+
+    let aggregation = Arc::new(AggregationService::new(
+        make_weights(vec![0.0]),
+        TrainingConfig::default(),
+    ));
+    let qkd_server = Arc::new(QkdServer::new(ChannelConfig::default(), ProtocolType::BB84));
+    let fl_service = GrpcFederatedLearningService::new(aggregation.clone(), qkd_server);
+
+    let reg = fl_service
+        .register(Request::new(RegisterRequest {
+            client_id: "observer".to_string(),
+            dataset_size: 0,
+            capabilities: "{}".to_string(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    // Open the subscription stream first; the snapshot frame should arrive
+    // immediately, followed by round-transition events from try_aggregate.
+    let mut stream = fl_service
+        .subscribe_rounds(Request::new(SubscribeRequest {
+            session_id: reg.session_id.clone(),
+            client_id: "observer".to_string(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    let snapshot = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+        .await
+        .expect("snapshot frame timed out")
+        .expect("stream closed before snapshot")
+        .unwrap();
+    assert_eq!(snapshot.round, 0);
+    assert_eq!(snapshot.action, "train");
+
+    // Drive an aggregation by registering two more clients and submitting.
+    aggregation.register_client("c1".to_string(), 100);
+    aggregation.register_client("c2".to_string(), 100);
+    aggregation
+        .submit_update(make_update("c1", vec![1.0], 0))
+        .unwrap();
+    aggregation
+        .submit_update(make_update("c2", vec![3.0], 0))
+        .unwrap();
+    aggregation.try_aggregate().unwrap();
+
+    let event = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+        .await
+        .expect("subscriber timed out waiting for round event")
+        .expect("stream closed before broadcast")
+        .unwrap();
+    assert_eq!(event.round, 1);
+    assert_eq!(event.action, "train");
+    assert!(!event.payload.is_empty());
 }

@@ -3,8 +3,8 @@
 //! Provides framework-agnostic types for model weights and updates
 //! that can be serialized, aggregated, and transmitted.
 
-use serde::{Deserialize, Serialize};
 use crate::error::FedResult;
+use serde::{Deserialize, Serialize};
 
 /// Flattened model weights as a vector of f32 parameters.
 /// Each named layer maps to a contiguous slice of parameters.
@@ -65,11 +65,7 @@ pub trait FederatedModel: Send + Sync {
     ) -> FedResult<ModelUpdate>;
 
     /// Evaluate model on given data, return (loss, accuracy)
-    fn evaluate(
-        &self,
-        data: &[Vec<f32>],
-        labels: &[Vec<f32>],
-    ) -> FedResult<(f64, f64)>;
+    fn evaluate(&self, data: &[Vec<f32>], labels: &[Vec<f32>]) -> FedResult<(f64, f64)>;
 
     /// Number of trainable parameters
     fn num_params(&self) -> usize;
@@ -106,7 +102,10 @@ impl ModelWeights {
 
     /// Get all parameters as a flat vector
     pub fn flatten(&self) -> Vec<f32> {
-        self.layers.iter().flat_map(|l| l.data.iter().copied()).collect()
+        self.layers
+            .iter()
+            .flat_map(|l| l.data.iter().copied())
+            .collect()
     }
 
     /// Create weights from flat vector, preserving layer structure from a template
