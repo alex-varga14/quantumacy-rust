@@ -20,9 +20,9 @@
 - Modify: `Cargo.toml` (workspace deps: add `hkdf = "0.12"`, `x509-parser = "0.16"`, `rcgen = "0.13"`; change `tonic = { version = "0.11", features = ["tls"] }`)
 - Modify: `fedlearn-transport/Cargo.toml` (use workspace `hkdf`, `x509-parser`; `rcgen` under `[dev-dependencies]`)
 
-- [ ] **Step 1:** Add the dependencies as above.
-- [ ] **Step 2:** Run `cargo check --workspace --all-targets` — expect clean (tls feature compiles, nothing uses new deps yet). If a version doesn't resolve, relax the minor version until `cargo update -p <crate>` succeeds, keeping the same major.
-- [ ] **Step 3:** Commit: `chore(ws1): add tls/hkdf/x509 dependencies`
+- [x] **Step 1:** Add the dependencies as above.
+- [x] **Step 2:** Run `cargo check --workspace --all-targets` — expect clean (tls feature compiles, nothing uses new deps yet). If a version doesn't resolve, relax the minor version until `cargo update -p <crate>` succeeds, keeping the same major.
+- [x] **Step 3:** Commit: `chore(ws1): add tls/hkdf/x509 dependencies`
 
 ### Task 2: TLS settings module with env loading
 
@@ -30,9 +30,9 @@
 - Create: `fedlearn-transport/src/tls.rs`
 - Modify: `fedlearn-transport/src/lib.rs` (add `pub mod tls;`)
 
-- [ ] **Step 1: Write failing tests** (in `tls.rs` `#[cfg(test)]`): `TlsSettings::from_env_map` with all three paths set returns `TlsSettings::Mutual{..}`; with `QUANTUMACY_INSECURE=1` returns `TlsSettings::Insecure`; with partial paths returns an error naming the missing variable.
-- [ ] **Step 2:** Run `cargo test -p fedlearn-transport tls` — expect compile failure (module missing).
-- [ ] **Step 3: Implement.** Core shape:
+- [x] **Step 1: Write failing tests** (in `tls.rs` `#[cfg(test)]`): `TlsSettings::from_env_map` with all three paths set returns `TlsSettings::Mutual{..}`; with `QUANTUMACY_INSECURE=1` returns `TlsSettings::Insecure`; with partial paths returns an error naming the missing variable.
+- [x] **Step 2:** Run `cargo test -p fedlearn-transport tls` — expect compile failure (module missing).
+- [x] **Step 3: Implement.** Core shape:
 
 ```rust
 pub enum TlsSettings {
@@ -52,14 +52,14 @@ impl TlsSettings {
 ```
 
 File reads happen inside `from_env_map` (error includes the path). New `TransportError::Config(String)` variant if one doesn't exist.
-- [ ] **Step 4:** Tests pass; full verification bar; commit: `feat(ws1): TLS settings with env-based configuration`
+- [x] **Step 4:** Tests pass; full verification bar; commit: `feat(ws1): TLS settings with env-based configuration`
 
 ### Task 3: Ephemeral test-cert generation helper
 
 **Files:**
 - Create: `fedlearn-transport/tests/common/mod.rs` (shared by integration tests)
 
-- [ ] **Step 1:** Implement `TestPki::generate()` using rcgen — a CA, a server cert for `localhost`, and `client_cert(cn: &str)` minting CA-signed client certs with the CN set:
+- [x] **Step 1:** Implement `TestPki::generate()` using rcgen — a CA, a server cert for `localhost`, and `client_cert(cn: &str)` minting CA-signed client certs with the CN set:
 
 ```rust
 pub struct TestPki { pub ca_pem: String, pub server_cert_pem: String, pub server_key_pem: String, ca_cert: rcgen::Certificate, ca_key: rcgen::KeyPair }
@@ -71,8 +71,8 @@ impl TestPki {
 ```
 
 (Adapt to the exact rcgen 0.13 API at compile time; the shape above is what matters.)
-- [ ] **Step 2:** Smoke test in the same module: generated PEMs are non-empty and parse via `x509_parser::pem`. Run it.
-- [ ] **Step 3:** Commit: `test(ws1): ephemeral PKI helper for transport tests`
+- [x] **Step 2:** Smoke test in the same module: generated PEMs are non-empty and parse via `x509_parser::pem`. Run it.
+- [x] **Step 3:** Commit: `test(ws1): ephemeral PKI helper for transport tests`
 
 ### Task 4: mTLS server builder + TLS client helper
 
@@ -80,8 +80,8 @@ impl TestPki {
 - Modify: `fedlearn-transport/src/tls.rs`
 - Test: `fedlearn-transport/tests/tls_handshake.rs`
 
-- [ ] **Step 1: Failing integration test:** start the FL service on an ephemeral port with `TestPki` material via the new builder; (a) a client with CA-signed cert + CA root connects and `register` succeeds; (b) a plaintext client errors; (c) a `wrong_ca_client` fails the handshake.
-- [ ] **Step 2: Implement** in `tls.rs`:
+- [x] **Step 1: Failing integration test:** start the FL service on an ephemeral port with `TestPki` material via the new builder; (a) a client with CA-signed cert + CA root connects and `register` succeeds; (b) a plaintext client errors; (c) a `wrong_ca_client` fails the handshake.
+- [x] **Step 2: Implement** in `tls.rs`:
 
 ```rust
 impl TlsSettings {
@@ -101,7 +101,7 @@ pub fn client_tls_config(ca_pem: &[u8], cert_pem: &[u8], key_pem: &[u8], domain:
 ```
 
 Wire into a `serve(settings, addr, fl_svc, kx_svc)` helper used by both the binary and tests (`Server::builder()` + `.tls_config(..)` when `Some`).
-- [ ] **Step 3:** Tests pass; verification bar; commit: `feat(ws1): mTLS-required server builder and TLS client config`
+- [x] **Step 3:** Tests pass; verification bar; commit: `feat(ws1): mTLS-required server builder and TLS client config`
 
 ### Task 5: Authenticated identity extraction (cert CN → client id)
 
@@ -110,8 +110,8 @@ Wire into a `serve(settings, addr, fl_svc, kx_svc)` helper used by both the bina
 - Modify: `fedlearn-transport/src/grpc_service.rs`
 - Test: extend `fedlearn-transport/tests/tls_handshake.rs`
 
-- [ ] **Step 1: Failing test:** over mTLS, `register` with `client_id` ≠ cert CN returns `PERMISSION_DENIED`; with matching CN it succeeds.
-- [ ] **Step 2: Implement:**
+- [x] **Step 1: Failing test:** over mTLS, `register` with `client_id` ≠ cert CN returns `PERMISSION_DENIED`; with matching CN it succeeds.
+- [x] **Step 2: Implement:**
 
 ```rust
 /// Extract the CN of the first peer certificate. None on plaintext connections.
@@ -124,7 +124,7 @@ pub fn peer_common_name<T>(request: &Request<T>) -> Option<String> {
 ```
 
 In `register`: if `peer_common_name` is `Some(cn)` and `cn != request.client_id` → `PERMISSION_DENIED`. If `None` (plaintext/insecure mode) registration proceeds (insecure mode keeps MVP behavior). Store the authenticated flag in `SessionState { client_id, authenticated: bool }`.
-- [ ] **Step 3:** Tests pass; verification bar; commit: `feat(ws1): bind sessions to mTLS client certificate identity`
+- [x] **Step 3:** Tests pass; verification bar; commit: `feat(ws1): bind sessions to mTLS client certificate identity`
 
 ### Task 6: Authorization enforcement on every RPC
 
@@ -132,9 +132,9 @@ In `register`: if `peer_common_name` is `Some(cn)` and `cn != request.client_id`
 - Modify: `fedlearn-transport/src/grpc_service.rs`
 - Test: extend `fedlearn-transport/tests/tls_handshake.rs`
 
-- [ ] **Step 1: Failing tests:** (a) client A (cert CN "alice") calling `submit_update`/`get_global_model`/`request_key` against client B's session id → `PERMISSION_DENIED`, even though A knows B's session id (today only the self-reported `client_id` field is checked); (b) `request_key` for a session not owned by the caller's CN → `PERMISSION_DENIED`.
-- [ ] **Step 2: Implement:** extend both `validate_session` impls to take the `&Request<T>` (or the extracted CN), and when the session is `authenticated`, require `peer_common_name(request) == Some(session.client_id)` — the self-reported field is no longer the trust anchor. Plaintext sessions (insecure mode) keep the old field check.
-- [ ] **Step 3:** Tests pass; verification bar; commit: `feat(ws1): enforce certificate identity on session-scoped RPCs`
+- [x] **Step 1: Failing tests:** (a) client A (cert CN "alice") calling `submit_update`/`get_global_model`/`request_key` against client B's session id → `PERMISSION_DENIED`, even though A knows B's session id (today only the self-reported `client_id` field is checked); (b) `request_key` for a session not owned by the caller's CN → `PERMISSION_DENIED`.
+- [x] **Step 2: Implement:** extend both `validate_session` impls to take the `&Request<T>` (or the extracted CN), and when the session is `authenticated`, require `peer_common_name(request) == Some(session.client_id)` — the self-reported field is no longer the trust anchor. Plaintext sessions (insecure mode) keep the old field check.
+- [x] **Step 3:** Tests pass; verification bar; commit: `feat(ws1): enforce certificate identity on session-scoped RPCs`
 
 ### Task 7: HKDF-derived per-round keys replace raw QKD material
 
@@ -143,8 +143,8 @@ In `register`: if `peer_common_name` is `Some(cn)` and `cn != request.client_id`
 - Modify: `fedlearn-transport/proto/fedlearn.proto` (KeyResponse: add `uint32 round`, `string derivation` fields)
 - Test: extend `fedlearn-transport/tests/mvp_flow.rs`
 
-- [ ] **Step 1: Failing test:** the key material returned by `request_key` differs from the raw QKD key stored server-side (`qkd_server.get_key(key_id)`), has length 32, and two requests for different rounds derive different keys; both ends of the FL flow still round-trip an encrypted update (server re-derives the same key when decrypting).
-- [ ] **Step 2: Implement:**
+- [x] **Step 1: Failing test:** the key material returned by `request_key` differs from the raw QKD key stored server-side (`qkd_server.get_key(key_id)`), has length 32, and two requests for different rounds derive different keys; both ends of the FL flow still round-trip an encrypted update (server re-derives the same key when decrypting).
+- [x] **Step 2: Implement:**
 
 ```rust
 fn derive_round_key(qkd_key: &SecureKey, session_id: &str, round: u32) -> [u8; 32] {
@@ -157,7 +157,7 @@ fn derive_round_key(qkd_key: &SecureKey, session_id: &str, round: u32) -> [u8; 3
 ```
 
 `mint_key` returns the derived key; `decode_update` re-derives (it knows key_id + session + round) instead of using raw material. The raw QKD key never appears in any proto message.
-- [ ] **Step 3:** Tests pass; verification bar; commit: `feat(ws1): HKDF per-round key derivation; raw QKD keys stay server-side`
+- [x] **Step 3:** Tests pass; verification bar; commit: `feat(ws1): HKDF per-round key derivation; raw QKD keys stay server-side`
 
 ### Task 8: Server binary + demo wiring
 
@@ -165,17 +165,17 @@ fn derive_round_key(qkd_key: &SecureKey, session_id: &str, round: u32) -> [u8; 3
 - Modify: `fedlearn-transport/src/bin/server.rs` (use `TlsSettings::from_env`, refuse to start without TLS unless `QUANTUMACY_INSECURE=1`)
 - Modify: `fedlearn-transport/examples/local_platform_demo.rs` (generate ephemeral PKI via rcgen at startup — rcgen is a dev-dep, available to examples — and run the whole demo over mTLS; `--insecure` flag for the old behavior)
 
-- [ ] **Step 1:** Implement both; demo prints which mode it runs in.
-- [ ] **Step 2:** Run `cargo run -p fedlearn-transport --example local_platform_demo -- --clients 4 --rounds 5` — full mTLS round summary, same numbers as before. Run the binary without env vars — expect a clear startup error naming the missing variables.
-- [ ] **Step 3:** Verification bar; commit: `feat(ws1): server binary and platform demo run over mTLS by default`
+- [x] **Step 1:** Implement both; demo prints which mode it runs in.
+- [x] **Step 2:** Run `cargo run -p fedlearn-transport --example local_platform_demo -- --clients 4 --rounds 5` — full mTLS round summary, same numbers as before. Run the binary without env vars — expect a clear startup error naming the missing variables.
+- [x] **Step 3:** Verification bar; commit: `feat(ws1): server binary and platform demo run over mTLS by default`
 
 ### Task 9: Documentation sweep (same PR, never drifts)
 
 **Files:**
 - Modify: `SECURITY.md` (transport row: real mTLS + authn/z; KeyExchange row: derived keys, residual documented), `SECURITY_ROADMAP.md` (WS1 checkboxes + deviation note), `RELEASE_READINESS.md` (Gate 3 TLS/auth items), `README.md` (new env vars: `QUANTUMACY_TLS_CERT`, `QUANTUMACY_TLS_KEY`, `QUANTUMACY_TLS_CLIENT_CA`, `QUANTUMACY_INSECURE`), `PROJECT_STATE.md` (test counts, status)
 
-- [ ] **Step 1:** Update all five docs; SECURITY.md is the source of truth and must state the residual: "derived keys transit inside mTLS; raw QKD keys never leave the server".
-- [ ] **Step 2:** Full verification bar one last time; commit: `docs(ws1): security posture updates for mTLS transport`
+- [x] **Step 1:** Update all five docs; SECURITY.md is the source of truth and must state the residual: "derived keys transit inside mTLS; raw QKD keys never leave the server".
+- [x] **Step 2:** Full verification bar one last time; commit: `docs(ws1): security posture updates for mTLS transport`
 
 ### Task 10: Finish the branch
 

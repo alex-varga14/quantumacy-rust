@@ -7,9 +7,10 @@ Quantumacy-RS is a Rust **research platform** inspired by [CERN's Quantumacy](ht
 > the upstream modules.
 
 > ⚠️ **Not a security product.** The homomorphic-encryption layer is a
-> simulation with **zero confidentiality**, the QKD layer is a software
-> simulator, and the transport has no TLS or authentication. Read
-> [SECURITY.md](SECURITY.md) before doing anything with real data.
+> simulation with **zero confidentiality** and the QKD layer is a software
+> simulator. The gRPC transport does require mutual TLS with
+> certificate-bound sessions, but the platform as a whole is research-grade.
+> Read [SECURITY.md](SECURITY.md) before doing anything with real data.
 
 ## Current State
 
@@ -90,20 +91,32 @@ Wires `ChestScanModel::to_encrypted_model` into the `EncryptedInferenceService`,
 ### Persistent server binary
 
 ```bash
-cargo run -p fedlearn-transport --bin server
-QUANTUMACY_BIND_ADDR=0.0.0.0:50051 QUANTUMACY_PROTOCOL=six-state cargo run -p fedlearn-transport --bin server
+QUANTUMACY_TLS_CERT=server.pem QUANTUMACY_TLS_KEY=server.key \
+QUANTUMACY_TLS_CLIENT_CA=ca.pem cargo run -p fedlearn-transport --bin server
+
+# Plaintext mode, local demos only:
+QUANTUMACY_INSECURE=1 cargo run -p fedlearn-transport --bin server
 ```
 
-The binary reads `QUANTUMACY_BIND_ADDR`, `QUANTUMACY_PROTOCOL`, `QUANTUMACY_KEY_BITS`, `QUANTUMACY_ROUNDS`, `QUANTUMACY_MIN_CLIENTS`, and a `QUANTUMACY_LOG`/`RUST_LOG` filter for `tracing-subscriber`.
+The binary **requires mutual TLS**: it refuses to start unless
+`QUANTUMACY_TLS_CERT`, `QUANTUMACY_TLS_KEY`, and `QUANTUMACY_TLS_CLIENT_CA`
+(the CA that client certificates must chain to) are set, or plaintext is
+explicitly requested with `QUANTUMACY_INSECURE=1`. It also reads
+`QUANTUMACY_BIND_ADDR`, `QUANTUMACY_PROTOCOL`, `QUANTUMACY_KEY_BITS`,
+`QUANTUMACY_ROUNDS`, `QUANTUMACY_MIN_CLIENTS`, and a
+`QUANTUMACY_LOG`/`RUST_LOG` filter for `tracing-subscriber`. Client identity
+is the certificate CN: sessions bind to it at registration and every RPC
+re-verifies it.
 
 ## Research parity vs production hardening
 
 The MVP targets **research parity** with the upstream CERN/Quantumacy reference: same demos, same protocol coverage, same end-to-end flow, simulation-grade homomorphic encryption. The following are explicitly **out of scope** for this milestone and tracked as post-MVP work:
 
 - Real HE backend (`tfhe-rs` / production CKKS) replacing the `he-core` simulation
-- TLS / rustls overlay, authn/z, raw-key elimination
 - Real TCP/TLS P2P transport replacing the simulated `qkd-network/src/p2p.rs`
 - Candle-backed CNN replacing the dense baseline in `dl-models`
+- Key rotation / session-lifetime policy (transport mTLS, certificate-bound
+  authn/z, and HKDF per-round keys landed with security Workstream 1)
 
 The security side of this work is planned in detail in [SECURITY_ROADMAP.md](SECURITY_ROADMAP.md).
 
