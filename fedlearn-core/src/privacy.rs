@@ -105,7 +105,7 @@ impl DifferentialPrivacy {
         num_clients: usize,
     ) -> FedResult<ModelWeights> {
         // Check privacy budget
-        let round_epsilon = self.compute_round_epsilon(num_clients);
+        let round_epsilon = self.compute_round_epsilon();
         if self.epsilon_spent + round_epsilon > self.config.epsilon_budget {
             return Err(FedError::PrivacyBudgetExhausted {
                 epsilon: self.epsilon_spent,
@@ -146,21 +146,20 @@ impl DifferentialPrivacy {
         z * std_dev
     }
 
-    /// Compute per-round ε using simple composition theorem.
-    /// For tighter bounds, use Rényi DP accounting (future improvement).
-    fn compute_round_epsilon(&self, num_clients: usize) -> f64 {
+    /// Compute the per-round ε of the Gaussian mechanism.
+    ///
+    /// The noise std is `σ · sensitivity`, so the sensitivity cancels and the
+    /// classical single-round Gaussian bound depends only on σ and δ:
+    ///
+    /// ε = sqrt(2 · ln(1.25/δ)) / σ
+    ///
+    /// A non-positive σ provides no privacy, so ε is infinite (refusal).
+    fn compute_round_epsilon(&self) -> f64 {
         let sigma = self.config.noise_multiplier;
-        let sensitivity = self.config.max_grad_norm as f64 / num_clients as f64;
-
         if sigma <= 0.0 {
             return f64::INFINITY;
         }
-
-        // Simple Gaussian mechanism: ε = sensitivity * sqrt(2 * ln(1.25/δ)) / σ
-        let eps =
-            sensitivity * (2.0 * (1.25 / self.config.delta).ln()).sqrt() / (sigma * sensitivity);
-
-        eps.max(0.0)
+        (2.0 * (1.25 / self.config.delta).ln()).sqrt() / sigma
     }
 
     /// Remaining privacy budget
@@ -291,6 +290,75 @@ mod tests {
             }
         }
         assert!(exhausted, "Budget should have been exhausted");
+    }
+
+    fn dp_with(noise_multiplier: f64, delta: f64) -> DifferentialPrivacy {
+        DifferentialPrivacy::new(DpConfig {
+            noise_multiplier,
+            delta,
+            ..Default::default()
+        })
+    }
+
+    proptest::proptest! {
+        /// (a) The per-round ε must equal the closed-form Gaussian bound
+        /// sqrt(2·ln(1.25/δ)) / σ.
+        #[test]
+        fn prop_round_epsilon_matches_closed_form(
+            sigma in 0.5f64..=10.0,
+            delta in 1e-7f64..=1e-3,
+        ) {
+            let dp = dp_with(sigma, delta);
+            let expected = (2.0 * (1.25 / delta).ln()).sqrt() / sigma;
+            let actual = dp.compute_round_epsilon();
+            proptest::prop_assert!(
+                (actual - expected).abs() < 1e-12,
+                "actual={actual}, expected={expected}"
+            );
+        }
+
+        /// (b1) ε is monotonically decreasing in σ: more noise → more privacy.
+        #[test]
+        fn prop_epsilon_decreasing_in_sigma(
+            sigma in 0.5f64..=10.0,
+            delta in 1e-7f64..=1e-3,
+            factor in 1.01f64..=4.0,
+        ) {
+            let eps_lo_sigma = dp_with(sigma, delta).compute_round_epsilon();
+            let eps_hi_sigma = dp_with(sigma * factor, delta).compute_round_epsilon();
+            proptest::prop_assert!(
+                eps_hi_sigma < eps_lo_sigma,
+                "ε(σ={}) = {eps_hi_sigma} should be < ε(σ={sigma}) = {eps_lo_sigma}",
+                sigma * factor
+            );
+        }
+
+        /// (b2) ε is monotonically decreasing in δ: a looser failure
+        /// probability requires less ε for the same noise.
+        #[test]
+        fn prop_epsilon_decreasing_in_delta(
+            sigma in 0.5f64..=10.0,
+            delta in 1e-7f64..=1e-3,
+            factor in 1.01f64..=10.0,
+        ) {
+            let eps_lo_delta = dp_with(sigma, delta).compute_round_epsilon();
+            let eps_hi_delta = dp_with(sigma, delta * factor).compute_round_epsilon();
+            proptest::prop_assert!(
+                eps_hi_delta < eps_lo_delta,
+                "ε(δ={}) = {eps_hi_delta} should be < ε(δ={delta}) = {eps_lo_delta}",
+                delta * factor
+            );
+        }
+
+        /// (c) Non-positive σ provides no privacy: ε must be infinite (refusal).
+        #[test]
+        fn prop_nonpositive_sigma_yields_infinite_epsilon(
+            sigma in -10.0f64..=0.0,
+            delta in 1e-7f64..=1e-3,
+        ) {
+            let eps = dp_with(sigma, delta).compute_round_epsilon();
+            proptest::prop_assert!(eps.is_infinite() && eps > 0.0, "ε = {eps}");
+        }
     }
 
     #[test]
