@@ -42,6 +42,23 @@ fn qubits_for_key_bits(key_bits: u32) -> usize {
     usize::max(bits * 16, 1024)
 }
 
+/// Identifier for the derivation scheme carried in `KeyResponse.derivation`.
+const KEY_DERIVATION_SCHEME: &str = "hkdf-sha256-v1";
+
+/// Derive the per-round channel key from a server-held QKD key. The raw QKD
+/// material never crosses the wire: both encrypt (client, from the
+/// KeyExchange response) and decrypt (server, re-derived here) use this key.
+fn derive_round_key(qkd_material: &[u8], session_id: &str, round: u32) -> [u8; 32] {
+    let hk = hkdf::Hkdf::<sha2::Sha256>::new(Some(session_id.as_bytes()), qkd_material);
+    let mut okm = [0u8; 32];
+    hk.expand(
+        format!("quantumacy-fl-v1:round:{round}").as_bytes(),
+        &mut okm,
+    )
+    .expect("32 bytes is a valid HKDF-SHA256 output length");
+    okm
+}
+
 /// Payload broadcast on each round transition.
 #[derive(Debug, Clone)]
 pub struct RoundEvent {
@@ -329,11 +346,21 @@ impl GrpcFederatedLearningService {
 
     fn decode_update(&self, request: &UpdateRequest) -> Result<ModelUpdate, Status> {
         if request.encrypted {
-            let key = self
+            let raw = self
                 .runtime
                 .qkd_server
                 .get_key(&request.key_id)
                 .map_err(|e| Status::failed_precondition(format!("Unable to load key: {e}")))?;
+
+            // Re-derive the per-round key the client received from
+            // KeyExchange; the raw QKD key itself is never used on the wire.
+            let derived = derive_round_key(&raw.material, &request.session_id, request.round);
+            let key = qkd_core::types::SecureKey {
+                key_id: raw.key_id.clone(),
+                timestamp: raw.timestamp,
+                material: derived.to_vec(),
+                length_bits: derived.len() * 8,
+            };
 
             let channel = SecureChannel::from_key(&key)
                 .map_err(|e| Status::internal(format!("Unable to create secure channel: {e}")))?;
@@ -376,10 +403,15 @@ impl GrpcKeyExchangeService {
             .get_key(&key_id)
             .map_err(|e| Status::internal(format!("Generated key unavailable: {e}")))?;
 
+        let round = self.runtime.aggregation.current_round();
+        let derived = derive_round_key(&key.material, session_id, round);
+
         Ok(KeyResponse {
             key_id,
-            key_material: key.material.clone(),
+            key_material: derived.to_vec(),
             expires_at: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as u64,
+            round,
+            derivation: KEY_DERIVATION_SCHEME.to_string(),
         })
     }
 }
@@ -646,6 +678,22 @@ mod tests {
     use qkd_core::channel::ChannelConfig;
     use qkd_core::types::{ProtocolType, SecureKey};
     use tonic::Request;
+
+    #[test]
+    fn test_round_key_derivation_is_round_and_session_scoped() {
+        let material = vec![7u8; 32];
+        let k0 = derive_round_key(&material, "session-1", 0);
+        let k1 = derive_round_key(&material, "session-1", 1);
+        let other_session = derive_round_key(&material, "session-2", 0);
+
+        assert_ne!(k0, k1, "rounds must derive distinct keys");
+        assert_ne!(k0, other_session, "sessions must derive distinct keys");
+        assert_eq!(
+            k0,
+            derive_round_key(&material, "session-1", 0),
+            "derivation must be deterministic"
+        );
+    }
 
     #[test]
     fn test_requested_key_bits_are_clamped() {
