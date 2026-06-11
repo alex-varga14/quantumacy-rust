@@ -9,6 +9,9 @@ use aes_gcm::{AeadCore, Aes256Gcm, Key, KeyInit, Nonce};
 use qkd_core::types::SecureKey;
 use serde::{Deserialize, Serialize};
 
+/// AES-256-GCM nonce length in bytes (96 bits)
+const NONCE_LEN: usize = 12;
+
 /// Encrypted message with nonce for AES-GCM
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptedMessage {
@@ -60,6 +63,13 @@ impl SecureChannel {
 
     /// Decrypt an encrypted message
     pub fn decrypt(&self, msg: &EncryptedMessage) -> NetworkResult<Vec<u8>> {
+        // The nonce arrives from the network; from_slice panics on wrong length.
+        if msg.nonce.len() != NONCE_LEN {
+            return Err(NetworkError::Encryption(format!(
+                "Invalid nonce length: {} bytes, need {NONCE_LEN}",
+                msg.nonce.len()
+            )));
+        }
         let nonce = Nonce::from_slice(&msg.nonce);
         let plaintext = self
             .cipher
@@ -108,6 +118,17 @@ mod tests {
         // Different nonces → different ciphertexts
         assert_ne!(enc1.ciphertext, enc2.ciphertext);
         assert_ne!(enc1.nonce, enc2.nonce);
+    }
+
+    #[test]
+    fn test_malformed_nonce_returns_error_not_panic() {
+        let key = make_test_key();
+        let channel = SecureChannel::from_key(&key).unwrap();
+
+        let mut msg = channel.encrypt(b"payload").unwrap();
+        msg.nonce = vec![0u8; 5]; // attacker-controlled, wrong length
+
+        assert!(channel.decrypt(&msg).is_err());
     }
 
     #[test]

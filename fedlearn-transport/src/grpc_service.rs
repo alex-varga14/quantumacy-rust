@@ -31,6 +31,17 @@ use tracing::{info, warn};
 /// fall back to the snapshot already delivered at subscription time.
 const ROUND_BROADCAST_CAPACITY: usize = 32;
 
+/// Upper bound on client-requested key size. Qubit simulation cost scales
+/// linearly with the request, so an unclamped value is a memory/CPU DoS.
+const MAX_KEY_BITS: u32 = 4096;
+
+/// Number of simulated qubits needed to distill a key of `key_bits`,
+/// clamped to [1024, MAX_KEY_BITS * 16].
+fn qubits_for_key_bits(key_bits: u32) -> usize {
+    let bits = key_bits.min(MAX_KEY_BITS) as usize;
+    usize::max(bits * 16, 1024)
+}
+
 /// Payload broadcast on each round transition.
 #[derive(Debug, Clone)]
 pub struct RoundEvent {
@@ -345,7 +356,7 @@ impl GrpcKeyExchangeService {
     ) -> Result<KeyResponse, Status> {
         self.validate_session(session_id, client_id)?;
 
-        let num_qubits = usize::max((key_bits as usize).saturating_mul(16), 1024);
+        let num_qubits = qubits_for_key_bits(key_bits);
         let key_id = self
             .runtime
             .qkd_server
@@ -583,6 +594,15 @@ mod tests {
     use qkd_core::channel::ChannelConfig;
     use qkd_core::types::{ProtocolType, SecureKey};
     use tonic::Request;
+
+    #[test]
+    fn test_requested_key_bits_are_clamped() {
+        // A hostile client must not be able to drive qubit allocation
+        // with an unbounded key_bits request.
+        assert_eq!(qubits_for_key_bits(u32::MAX), (MAX_KEY_BITS as usize) * 16);
+        assert_eq!(qubits_for_key_bits(0), 1024);
+        assert_eq!(qubits_for_key_bits(256), 4096);
+    }
 
     fn make_weights(vals: Vec<f32>) -> ModelWeights {
         let n = vals.len();
