@@ -11,6 +11,7 @@
 
 pub mod grpc_service;
 pub mod secure_channel;
+pub mod tls;
 pub mod proto {
     tonic::include_proto!("quantumacy.fedlearn");
 }
@@ -36,6 +37,9 @@ pub enum TransportError {
 
     #[error("Session not found: {0}")]
     SessionNotFound(String),
+
+    #[error("Configuration error: {0}")]
+    Config(String),
 }
 
 pub type TransportResult<T> = Result<T, TransportError>;
