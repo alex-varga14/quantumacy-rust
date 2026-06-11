@@ -14,3 +14,4 @@ thiserror = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 sha2 = { workspace = true }
+zeroize = { workspace = true }
