@@ -1,9 +1,9 @@
 # Quantumacy-RS: Project State
 
-**Date**: 2026-06-10
-**MVP Status**: RESEARCH-PARITY MVP READY — open-source release prep complete (LICENSE, SECURITY.md, CI, [SECURITY_ROADMAP.md](SECURITY_ROADMAP.md))
+**Date**: 2026-06-11
+**MVP Status**: RESEARCH-PARITY MVP READY — release prep and pre-public audit complete (LICENSE, SECURITY.md, CI, [SECURITY_ROADMAP.md](SECURITY_ROADMAP.md); audit history in [SECURITY.md](SECURITY.md))
 **Total Rust LOC**: ~7,900 (incl. demos + server binary)
-**Tests Authored**: 65
+**Tests Authored**: 67
 **Local Test Execution**: ✅ Verified — `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are both green.
 **Workspace Crates**: 7
 
@@ -42,7 +42,7 @@ Fully implemented QKD protocol library:
 - **Key manager** (`key_manager.rs`): Thread-safe storage with TTL, capacity control, expiration, and zeroization.
 
 ### `qkd-network` — COMPLETE
-**3 tests authored**
+**4 tests authored**
 
 Async networking layer:
 - **QKD server** (`server.rs`): Runs blocking protocol work on background threads and manages sessions.
@@ -59,7 +59,7 @@ Federated learning primitives:
 - **Round orchestration** (`round.rs`): Single-round execution with DP integration and early stopping controls.
 
 ### `fedlearn-transport` — MVP COMPLETE
-**6 tests authored** (+ 1 server binary smoke-tested)
+**7 tests authored** (+ 1 server binary smoke-tested)
 
 Transport and service layer:
 - **Secure FL channel** (`secure_channel.rs`): QKD-backed AES-GCM transport for `ModelUpdate` and `ModelWeights`.
@@ -113,9 +113,9 @@ Medical-imaging model layer:
 | Crate | Tests Authored | Status |
 |------|----------------|--------|
 | `qkd-core` | 21 | ✅ Passing |
-| `qkd-network` | 3 | ✅ Passing |
+| `qkd-network` | 4 | ✅ Passing |
 | `fedlearn-core` | 19 | ✅ Passing |
-| `fedlearn-transport` | 6 (+ 1 binary) | ✅ Passing |
+| `fedlearn-transport` | 7 (+ 1 binary) | ✅ Passing |
 | `he-core` | 7 | ✅ Passing |
 | `he-inference` | 4 | ✅ Passing |
 | `dl-models` | 4 | ✅ Passing |

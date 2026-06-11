@@ -12,7 +12,7 @@ The repository now has 1:1 research parity with [CERN/Quantumacy](https://github
 
 ### Gate 1: Local Engineering Validation
 - [x] `cargo check --workspace --all-targets`
-- [x] `cargo test --workspace` (65 tests passing)
+- [x] `cargo test --workspace` (67 tests passing)
 - [x] `cargo test -p fedlearn-transport`
 - [x] `cargo test -p he-core`
 - [x] `cargo test -p he-inference`
@@ -48,6 +48,9 @@ The repository now has 1:1 research parity with [CERN/Quantumacy](https://github
 - [x] README reframed as research platform with CERN non-affiliation notice.
 - [x] Junk files untracked (`.DS_Store`, internal handoff notes).
 - [x] All work committed and pushed.
+- [x] CONTRIBUTING.md and `v0.1.0` tag.
+- [x] Implied-affiliation metadata scrubbed (authors, repository URL); co-author trailers removed from history.
+- [x] Internal pre-release audit (2026-06-11): two network-facing findings fixed in `0e5e4ba`; `cargo audit` clean. See the audit history table in [SECURITY.md](SECURITY.md).
 - [ ] Repository made public.
 - [ ] GitHub: private vulnerability reporting enabled (SECURITY.md references it).
 - [ ] GitHub: Dependabot alerts enabled.

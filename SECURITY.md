@@ -21,6 +21,15 @@ If you need real privacy-preserving ML today, use audited tooling
 The roadmap for closing these gaps is tracked in
 [SECURITY_ROADMAP.md](SECURITY_ROADMAP.md).
 
+## Audit history
+
+| Date | Scope | Outcome |
+|---|---|---|
+| 2026-06-11 | Internal pre-release audit of all network-facing code paths (gRPC handlers, AES-GCM channel, key manager, DP mechanism, FedAvg validation, HE simulation consistency), plus `cargo audit` dependency scan. **Not an external review.** | Two findings, both fixed in `0e5e4ba`: a remote-reachable panic on malformed nonce length in `SecureChannel::decrypt`, and an unclamped client-supplied `key_bits` allowing unbounded allocation in the key-exchange service. Verified sound: AES-GCM nonce handling (fresh 96-bit `OsRng` nonce per message), `SecureKey` zeroization on drop, session-ownership checks on all authenticated RPCs, single-round Gaussian DP bound. Dependency scan: 0 vulnerabilities across 229 crates; one accepted warning-level advisory (RUSTSEC-2026-0097, `rand 0.8.5` — unsound only with a custom logger re-entering the RNG, a pattern this codebase does not use; resolution is the rand 0.9 migration, tracked as post-MVP). |
+
+The "external security review" gate before any beta label is tracked in
+[SECURITY_ROADMAP.md](SECURITY_ROADMAP.md) Phase 5.
+
 ## Supported versions
 
 There are no supported releases yet. Security fixes land on `main` only.
