@@ -93,10 +93,12 @@ pub fn generate_keys(params: HeParameters) -> HeResult<HeKeySet> {
     params.validate()?;
 
     let mut rng = rand::thread_rng();
+    // Each seed is sampled independently and the public key id is a
+    // random UUID: nothing public-facing is derived from a secret.
     let secret_seed = rng.gen::<u64>();
-    let mask_seed = secret_seed.rotate_left(17) ^ 0xA5A5_A5A5_A5A5_A5A5;
+    let mask_seed = rng.gen::<u64>();
     let refresh_seed = rng.gen::<u64>();
-    let key_id = format!("he-{:016x}", secret_seed);
+    let key_id = format!("he-{}", uuid::Uuid::new_v4());
 
     Ok(HeKeySet {
         client_key: ClientKey {
@@ -225,6 +227,30 @@ mod tests {
         for (expected, actual) in values.iter().zip(decrypted.iter()) {
             assert!((expected - actual).abs() < 1e-9);
         }
+    }
+
+    #[test]
+    fn test_key_id_does_not_leak_seeds() {
+        let keys = generate_keys(HeParameters::default()).unwrap();
+
+        // The public key id must not embed either seed in hex form.
+        let secret_hex = format!("{:016x}", keys.client_key.secret_seed);
+        let mask_hex = format!("{:016x}", keys.public_key.mask_seed);
+        assert!(
+            !keys.client_key.key_id.contains(&secret_hex),
+            "key_id leaks the secret seed"
+        );
+        assert!(
+            !keys.client_key.key_id.contains(&mask_hex),
+            "key_id leaks the mask seed"
+        );
+
+        // The mask seed must not be derivable from the secret seed.
+        assert_ne!(
+            keys.public_key.mask_seed,
+            keys.client_key.secret_seed.rotate_left(17) ^ 0xA5A5_A5A5_A5A5_A5A5,
+            "mask seed is derived from the secret seed"
+        );
     }
 
     /// Compile-time proof that a type scrubs its secrets when dropped.
