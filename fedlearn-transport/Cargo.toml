@@ -23,6 +23,12 @@ parking_lot = { workspace = true }
 chrono = { workspace = true }
 tokio-stream = "0.1"
 tracing-subscriber = { workspace = true }
+hkdf = { workspace = true }
+sha2 = { workspace = true }
+x509-parser = { workspace = true }
+
+[dev-dependencies]
+rcgen = { workspace = true }
 
 [build-dependencies]
 tonic-build = { workspace = true }
