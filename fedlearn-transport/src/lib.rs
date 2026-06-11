@@ -40,6 +40,9 @@ pub enum TransportError {
 
     #[error("Configuration error: {0}")]
     Config(String),
+
+    #[error("Key expired: {0}")]
+    KeyExpired(String),
 }
 
 pub type TransportResult<T> = Result<T, TransportError>;
