@@ -42,7 +42,8 @@ The repository now has 1:1 research parity with [CERN/Quantumacy](https://github
 - [x] Add TLS/rustls around transport (Workstream 1 — mutual TLS required by default).
 - [x] Add authentication/authorization for clients (Workstream 1 — certificate-bound sessions).
 - [x] Raw QKD keys no longer transit the wire (HKDF per-round derivation; see SECURITY.md for the documented residual).
-- [ ] Define session lifetime and key rotation policy (Workstream 2).
+- [x] Define session lifetime and key rotation policy (Workstream 2 — `KeyPolicy`, zeroized key types, no secret-derived identifiers).
+- [x] DP accounting reviewed (Workstream 4 — property-tested calibration, RDP composition).
 
 ### Gate 3.5: Open-Source Release Prep
 - [x] Apache-2.0 LICENSE file (matches `Cargo.toml` workspace license).
