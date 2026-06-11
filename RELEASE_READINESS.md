@@ -39,9 +39,10 @@ The repository now has 1:1 research parity with [CERN/Quantumacy](https://github
 - [x] SECURITY.md with per-component security status and reporting policy.
 - [x] Crate-level simulation warnings in `he-core` and `qkd-core` rustdoc.
 - [x] Post-MVP hardening plan ([SECURITY_ROADMAP.md](SECURITY_ROADMAP.md)).
-- [ ] Add TLS/rustls around transport (Workstream 1).
+- [x] Add TLS/rustls around transport (Workstream 1 — mutual TLS required by default).
+- [x] Add authentication/authorization for clients (Workstream 1 — certificate-bound sessions).
+- [x] Raw QKD keys no longer transit the wire (HKDF per-round derivation; see SECURITY.md for the documented residual).
 - [ ] Define session lifetime and key rotation policy (Workstream 2).
-- [ ] Add authentication/authorization for clients (Workstream 1).
 
 ### Gate 3.5: Open-Source Release Prep
 - [x] Apache-2.0 LICENSE file (matches `Cargo.toml` workspace license).

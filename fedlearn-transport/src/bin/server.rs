@@ -10,6 +10,12 @@
 //! - `QUANTUMACY_MIN_CLIENTS` default `2`
 //! - `QUANTUMACY_LOG` / `RUST_LOG` standard `tracing-subscriber` filter
 //!
+//! Transport security (mutual TLS, required unless explicitly disabled):
+//! - `QUANTUMACY_TLS_CERT`      server certificate PEM path
+//! - `QUANTUMACY_TLS_KEY`       server private key PEM path
+//! - `QUANTUMACY_TLS_CLIENT_CA` CA bundle that client certificates must chain to
+//! - `QUANTUMACY_INSECURE=1`    serve plaintext (local demos only)
+//!
 //! Run with:
 //!   cargo run -p fedlearn-transport --bin server
 //!   QUANTUMACY_BIND_ADDR=0.0.0.0:50051 cargo run -p fedlearn-transport --bin server
@@ -24,6 +30,7 @@ use fedlearn_core::round::TrainingConfig;
 use fedlearn_transport::grpc_service::{AggregationService, GrpcFederatedLearningService};
 use fedlearn_transport::proto::federated_learning_server::FederatedLearningServer;
 use fedlearn_transport::proto::key_exchange_server::KeyExchangeServer;
+use fedlearn_transport::tls::TlsSettings;
 use qkd_core::channel::ChannelConfig;
 use qkd_core::types::ProtocolType;
 use qkd_network::server::QkdServer;
@@ -114,6 +121,8 @@ fn placeholder_weights() -> ModelWeights {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let cfg = load_config()?;
+    // Fail fast on missing/unreadable TLS material before any service boots.
+    let tls_settings = TlsSettings::from_env()?;
 
     info!(?cfg, "starting Quantumacy federated learning server");
 
@@ -134,7 +143,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key_service = fl_service.key_exchange_service();
 
     info!(addr = %cfg.bind, "binding gRPC server");
-    Server::builder()
+    let mut builder = Server::builder();
+    if let Some(tls) = tls_settings.server_tls_config() {
+        info!("mutual TLS enabled: client certificates required");
+        builder = builder.tls_config(tls)?;
+    }
+    builder
         .add_service(FederatedLearningServer::new(fl_service))
         .add_service(KeyExchangeServer::new(key_service))
         .serve_with_shutdown(cfg.bind, async {

@@ -62,26 +62,31 @@ meaningless while keys cross the wire in plaintext.
 (enable `tonic/tls`), new `fedlearn-transport/src/auth.rs`,
 `fedlearn-transport/tests/`.
 
-- [ ] Enable `rustls` on the tonic server and client builders; env-configured
+- [x] Enable `rustls` on the tonic server and client builders; env-configured
       cert/key paths (`QUANTUMACY_TLS_CERT`, `QUANTUMACY_TLS_KEY`,
-      `QUANTUMACY_TLS_CA`); plaintext mode only behind an explicit
+      `QUANTUMACY_TLS_CLIENT_CA`); plaintext mode only behind an explicit
       `QUANTUMACY_INSECURE=1` for local demos.
-- [ ] mTLS client identity: require client certificates signed by the
+- [x] mTLS client identity: require client certificates signed by the
       federation CA; map cert subject → client id at registration.
-- [ ] Authorization checks in `AggregationService`: only registered,
-      authenticated clients may fetch models or submit updates; reject
-      cross-session key requests in `KeyExchange`.
-- [ ] **Eliminate raw-key transfer.** `KeyExchange` must stop returning key
-      bytes. Replace with: both ends derive the channel key via HKDF-SHA256
-      over (TLS exporter material ‖ QKD-session id ‖ round id). The
-      QKD-derived key becomes a *mixed-in* input, never the sole secret and
-      never on the wire.
-- [ ] Integration tests: plaintext client rejected; wrong-CA cert rejected;
-      unregistered client cannot submit; full round over mTLS passes
-      (extend `fedlearn-transport/tests/mvp_flow.rs`).
+- [x] Authorization checks: sessions bind to the certificate CN and every
+      session-scoped RPC (model fetch, submission, status, subscription,
+      key exchange) re-verifies it; cross-session access is denied even
+      with a stolen session id.
+- [x] **Raw QKD keys no longer transit.** `KeyExchange` returns
+      HKDF-SHA256(qkd_key, salt = session id, info = round) per-round keys;
+      the server re-derives on decrypt. *Deviation from the original plan:*
+      tonic does not expose TLS exporter material (RFC 5705), so the
+      derived key — never the raw QKD key — still travels inside the mTLS
+      channel. Full elimination moves to Workstream 5 (distributed QKD
+      endpoints).
+- [x] Integration tests: plaintext client rejected; wrong-CA cert rejected;
+      CN/client_id mismatch rejected; session hijack with a stolen session
+      id rejected; full encrypted round over mTLS passes
+      (`fedlearn-transport/tests/tls_handshake.rs`, `tests/mvp_flow.rs`).
 
-**Exit criteria:** a packet capture of a full FL round contains no key
-material and no plaintext weights; all five new tests green.
+**Exit criteria (met 2026-06-11, branch `ws1-transport-security`):** wire
+traffic carries only TLS-protected frames; raw QKD material never leaves the
+server process; 12 new tests cover the rejection and round-trip paths.
 
 ## Workstream 2 — Key lifecycle: rotation, TTL, zeroization
 

@@ -11,9 +11,9 @@ like cryptography are explicitly simulations:
 |---|---|---|
 | `he-core` / `he-inference` | **Simulation — zero confidentiality** | The "ciphertext" carries its own masking values and decryption does not depend on the secret key. It models the *workflow* of CKKS-style homomorphic encryption, not the cryptography. Never put real data through it. |
 | `qkd-core` / `qkd-network` | **Software simulation** | There is no quantum hardware. Qubit preparation, transmission, and measurement are simulated (as in upstream QKDSimkit). Derived keys are only as secret as the classical RNG and the process memory that produced them. |
-| `fedlearn-transport` secure channel | **Real AES-256-GCM, weak bootstrap** | Message protection uses real AES-256-GCM, but the key-exchange service returns raw key bytes over an unauthenticated, un-TLS'd gRPC channel. Anyone on the network path can read the keys. |
+| `fedlearn-transport` secure channel | **Real AES-256-GCM over mTLS, derived keys** | Message protection uses real AES-256-GCM. The key-exchange service returns HKDF-SHA256 per-round keys derived from the server-held QKD key (salt = session id, info = round); raw QKD material never crosses the wire. Residual: the derived key itself still transits inside the mTLS channel — full elimination requires distributed QKD endpoints (roadmap Workstream 5). |
 | `fedlearn-core` differential privacy | **Real mechanism, unreviewed accounting** | Gradient clipping and Gaussian noise are implemented, but the privacy budget accounting has not been audited. Do not rely on it for formal DP guarantees. |
-| Transport (gRPC) | **No TLS, no authn/authz** | All services run in plaintext and accept any client. |
+| Transport (gRPC) | **Mutual TLS required, certificate-bound sessions** | The server requires client certificates chaining to a configured CA (`QUANTUMACY_TLS_CLIENT_CA`); sessions bind to the certificate CN at registration and every session-scoped RPC re-verifies it — the self-reported client id is not the trust anchor. Plaintext operation exists only behind an explicit `QUANTUMACY_INSECURE=1` for local demos. Residual: no key-rotation policy or session-lifetime enforcement yet (roadmap Workstream 2). |
 
 If you need real privacy-preserving ML today, use audited tooling
 (e.g. `tfhe-rs`, OpenFL, Opacus) rather than this repository.

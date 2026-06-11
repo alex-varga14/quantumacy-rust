@@ -99,8 +99,10 @@ message KeyRequest {
 
 message KeyResponse {
     string key_id = 1;
-    bytes key_material = 2; // Encrypted key material
+    bytes key_material = 2; // HKDF-derived per-round key; never the raw QKD key
     uint64 expires_at = 3;
+    uint32 round = 4;       // Round the derived key is bound to
+    string derivation = 5;  // Derivation scheme identifier, e.g. "hkdf-sha256-v1"
 }
 
 message RotateKeyRequest {

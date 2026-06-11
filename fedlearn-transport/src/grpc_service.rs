@@ -42,6 +42,23 @@ fn qubits_for_key_bits(key_bits: u32) -> usize {
     usize::max(bits * 16, 1024)
 }
 
+/// Identifier for the derivation scheme carried in `KeyResponse.derivation`.
+const KEY_DERIVATION_SCHEME: &str = "hkdf-sha256-v1";
+
+/// Derive the per-round channel key from a server-held QKD key. The raw QKD
+/// material never crosses the wire: both encrypt (client, from the
+/// KeyExchange response) and decrypt (server, re-derived here) use this key.
+fn derive_round_key(qkd_material: &[u8], session_id: &str, round: u32) -> [u8; 32] {
+    let hk = hkdf::Hkdf::<sha2::Sha256>::new(Some(session_id.as_bytes()), qkd_material);
+    let mut okm = [0u8; 32];
+    hk.expand(
+        format!("quantumacy-fl-v1:round:{round}").as_bytes(),
+        &mut okm,
+    )
+    .expect("32 bytes is a valid HKDF-SHA256 output length");
+    okm
+}
+
 /// Payload broadcast on each round transition.
 #[derive(Debug, Clone)]
 pub struct RoundEvent {
@@ -83,6 +100,9 @@ pub struct ClientInfo {
 #[derive(Debug, Clone)]
 struct SessionState {
     client_id: String,
+    /// True when the session was established over mTLS and bound to the
+    /// client certificate's CN; such sessions re-verify the CN on every RPC.
+    authenticated: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +120,38 @@ struct TransportRuntime {
     aggregation: Arc<AggregationService>,
     qkd_server: Arc<QkdServer>,
     sessions: Arc<RwLock<HashMap<String, SessionState>>>,
+}
+
+impl TransportRuntime {
+    /// Validate that `client_id` owns `session_id`, and — for sessions
+    /// established over mTLS — that the caller's certificate CN matches the
+    /// session identity. The self-reported `client_id` field is never the
+    /// trust anchor on authenticated sessions.
+    fn validate_session(
+        &self,
+        session_id: &str,
+        client_id: &str,
+        peer_cn: Option<&str>,
+    ) -> Result<(), Status> {
+        let sessions = self.sessions.read();
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| Status::not_found(format!("Session not found: {session_id}")))?;
+
+        if session.client_id != client_id {
+            return Err(Status::permission_denied(format!(
+                "Client {client_id} does not own session {session_id}"
+            )));
+        }
+
+        if session.authenticated && peer_cn != Some(session.client_id.as_str()) {
+            return Err(Status::permission_denied(
+                "certificate identity does not match session owner",
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -292,28 +344,23 @@ impl GrpcFederatedLearningService {
         }
     }
 
-    fn validate_session(&self, session_id: &str, client_id: &str) -> Result<(), Status> {
-        let sessions = self.runtime.sessions.read();
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| Status::not_found(format!("Session not found: {session_id}")))?;
-
-        if session.client_id != client_id {
-            return Err(Status::permission_denied(format!(
-                "Client {client_id} does not own session {session_id}"
-            )));
-        }
-
-        Ok(())
-    }
-
     fn decode_update(&self, request: &UpdateRequest) -> Result<ModelUpdate, Status> {
         if request.encrypted {
-            let key = self
+            let raw = self
                 .runtime
                 .qkd_server
                 .get_key(&request.key_id)
                 .map_err(|e| Status::failed_precondition(format!("Unable to load key: {e}")))?;
+
+            // Re-derive the per-round key the client received from
+            // KeyExchange; the raw QKD key itself is never used on the wire.
+            let derived = derive_round_key(&raw.material, &request.session_id, request.round);
+            let key = qkd_core::types::SecureKey {
+                key_id: raw.key_id.clone(),
+                timestamp: raw.timestamp,
+                material: derived.to_vec(),
+                length_bits: derived.len() * 8,
+            };
 
             let channel = SecureChannel::from_key(&key)
                 .map_err(|e| Status::internal(format!("Unable to create secure channel: {e}")))?;
@@ -333,28 +380,15 @@ impl GrpcFederatedLearningService {
 }
 
 impl GrpcKeyExchangeService {
-    fn validate_session(&self, session_id: &str, client_id: &str) -> Result<(), Status> {
-        let sessions = self.runtime.sessions.read();
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| Status::not_found(format!("Session not found: {session_id}")))?;
-
-        if session.client_id != client_id {
-            return Err(Status::permission_denied(format!(
-                "Client {client_id} does not own session {session_id}"
-            )));
-        }
-
-        Ok(())
-    }
-
     async fn mint_key(
         &self,
         session_id: &str,
         client_id: &str,
+        peer_cn: Option<&str>,
         key_bits: u32,
     ) -> Result<KeyResponse, Status> {
-        self.validate_session(session_id, client_id)?;
+        self.runtime
+            .validate_session(session_id, client_id, peer_cn)?;
 
         let num_qubits = qubits_for_key_bits(key_bits);
         let key_id = self
@@ -369,10 +403,15 @@ impl GrpcKeyExchangeService {
             .get_key(&key_id)
             .map_err(|e| Status::internal(format!("Generated key unavailable: {e}")))?;
 
+        let round = self.runtime.aggregation.current_round();
+        let derived = derive_round_key(&key.material, session_id, round);
+
         Ok(KeyResponse {
             key_id,
-            key_material: key.material.clone(),
+            key_material: derived.to_vec(),
             expires_at: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as u64,
+            round,
+            derivation: KEY_DERIVATION_SCHEME.to_string(),
         })
     }
 }
@@ -385,10 +424,24 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<RegisterRequest>,
     ) -> Result<Response<RegisterResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
         if request.client_id.trim().is_empty() {
             return Err(Status::invalid_argument("client_id is required"));
         }
+
+        // On mTLS connections the certificate CN is the identity; the
+        // self-reported client_id must match it.
+        let authenticated = match &peer_cn {
+            Some(cn) if *cn != request.client_id => {
+                return Err(Status::permission_denied(format!(
+                    "client_id '{}' does not match certificate CN '{cn}'",
+                    request.client_id
+                )));
+            }
+            Some(_) => true,
+            None => false,
+        };
 
         let current_round = self
             .runtime
@@ -399,6 +452,7 @@ impl FederatedLearning for GrpcFederatedLearningService {
             session_id.clone(),
             SessionState {
                 client_id: request.client_id,
+                authenticated,
             },
         );
 
@@ -416,8 +470,13 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<ModelRequest>,
     ) -> Result<Response<ModelResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
-        self.validate_session(&request.session_id, &request.client_id)?;
+        self.runtime.validate_session(
+            &request.session_id,
+            &request.client_id,
+            peer_cn.as_deref(),
+        )?;
 
         let weights = self.runtime.aggregation.get_global_weights();
         let serialized = serde_json::to_vec(&weights)
@@ -434,8 +493,13 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<UpdateRequest>,
     ) -> Result<Response<UpdateResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
-        self.validate_session(&request.session_id, &request.client_id)?;
+        self.runtime.validate_session(
+            &request.session_id,
+            &request.client_id,
+            peer_cn.as_deref(),
+        )?;
 
         let update = self.decode_update(&request)?;
         if update.client_id != request.client_id {
@@ -480,14 +544,17 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<StatusRequest>,
     ) -> Result<Response<StatusResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
-        let sessions = self.runtime.sessions.read();
-        let session = sessions.get(&request.session_id).ok_or_else(|| {
-            Status::not_found(format!("Session not found: {}", request.session_id))
-        })?;
-        let client_id = session.client_id.clone();
-        drop(sessions);
-        self.validate_session(&request.session_id, &client_id)?;
+        let client_id = {
+            let sessions = self.runtime.sessions.read();
+            let session = sessions.get(&request.session_id).ok_or_else(|| {
+                Status::not_found(format!("Session not found: {}", request.session_id))
+            })?;
+            session.client_id.clone()
+        };
+        self.runtime
+            .validate_session(&request.session_id, &client_id, peer_cn.as_deref())?;
 
         let status = self.runtime.aggregation.status_snapshot();
         Ok(Response::new(StatusResponse {
@@ -504,8 +571,13 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<SubscribeRequest>,
     ) -> Result<Response<Self::SubscribeRoundsStream>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
-        self.validate_session(&request.session_id, &request.client_id)?;
+        self.runtime.validate_session(
+            &request.session_id,
+            &request.client_id,
+            peer_cn.as_deref(),
+        )?;
 
         // Snapshot the current state so subscribers don't have to wait for the
         // next aggregation to learn where the platform is.
@@ -566,9 +638,15 @@ impl KeyExchange for GrpcKeyExchangeService {
         &self,
         request: Request<KeyRequest>,
     ) -> Result<Response<KeyResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
         let key = self
-            .mint_key(&request.session_id, &request.client_id, request.key_bits)
+            .mint_key(
+                &request.session_id,
+                &request.client_id,
+                peer_cn.as_deref(),
+                request.key_bits,
+            )
             .await?;
         Ok(Response::new(key))
     }
@@ -577,9 +655,15 @@ impl KeyExchange for GrpcKeyExchangeService {
         &self,
         request: Request<RotateKeyRequest>,
     ) -> Result<Response<KeyResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
         let key = self
-            .mint_key(&request.session_id, &request.client_id, 256)
+            .mint_key(
+                &request.session_id,
+                &request.client_id,
+                peer_cn.as_deref(),
+                256,
+            )
             .await?;
         Ok(Response::new(key))
     }
@@ -594,6 +678,22 @@ mod tests {
     use qkd_core::channel::ChannelConfig;
     use qkd_core::types::{ProtocolType, SecureKey};
     use tonic::Request;
+
+    #[test]
+    fn test_round_key_derivation_is_round_and_session_scoped() {
+        let material = vec![7u8; 32];
+        let k0 = derive_round_key(&material, "session-1", 0);
+        let k1 = derive_round_key(&material, "session-1", 1);
+        let other_session = derive_round_key(&material, "session-2", 0);
+
+        assert_ne!(k0, k1, "rounds must derive distinct keys");
+        assert_ne!(k0, other_session, "sessions must derive distinct keys");
+        assert_eq!(
+            k0,
+            derive_round_key(&material, "session-1", 0),
+            "derivation must be deterministic"
+        );
+    }
 
     #[test]
     fn test_requested_key_bits_are_clamped() {

@@ -187,6 +187,80 @@ async fn mvp_round_trip_over_public_grpc_api() {
 }
 
 #[tokio::test]
+async fn derived_keys_never_expose_raw_qkd_material() {
+    let aggregation = Arc::new(AggregationService::new(
+        make_weights(vec![0.0, 0.0]),
+        TrainingConfig::default(),
+    ));
+    let qkd_server = Arc::new(QkdServer::new(ChannelConfig::default(), ProtocolType::BB84));
+    let fl_service = GrpcFederatedLearningService::new(aggregation, qkd_server.clone());
+    let key_service = fl_service.key_exchange_service();
+
+    let reg = fl_service
+        .register(Request::new(RegisterRequest {
+            client_id: "alice".to_string(),
+            dataset_size: 100,
+            capabilities: "{}".to_string(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    let key = key_service
+        .request_key(Request::new(KeyRequest {
+            client_id: "alice".to_string(),
+            session_id: reg.session_id.clone(),
+            key_bits: 256,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    let raw = qkd_server.get_key(&key.key_id).unwrap();
+
+    assert_eq!(key.key_material.len(), 32, "derived keys are 32 bytes");
+    assert_ne!(
+        key.key_material[..],
+        raw.material[..32],
+        "response material must not be the raw QKD key"
+    );
+    assert_eq!(key.derivation, "hkdf-sha256-v1");
+
+    // The encrypted round-trip still works: the server re-derives the same
+    // per-round key when decrypting the submission.
+    let channel = SecureChannel::from_key(&secure_key_from_parts(
+        key.key_id.clone(),
+        key.key_material.clone(),
+    ))
+    .unwrap();
+    let fl_channel = SecureFLChannel::new(channel, key.key_id.clone());
+    let payload = serde_json::to_vec(
+        &fl_channel
+            .encrypt_update(&make_update("alice", vec![1.0, 2.0], key.round))
+            .unwrap(),
+    )
+    .unwrap();
+
+    let submit = fl_service
+        .submit_update(Request::new(UpdateRequest {
+            session_id: reg.session_id,
+            client_id: "alice".to_string(),
+            round: key.round,
+            model_update: payload,
+            key_id: key.key_id,
+            encrypted: true,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(
+        submit.accepted,
+        "round-trip with derived key: {}",
+        submit.message
+    );
+}
+
+#[tokio::test]
 async fn subscribe_rounds_observes_round_transition() {
     use tokio_stream::StreamExt;
 
