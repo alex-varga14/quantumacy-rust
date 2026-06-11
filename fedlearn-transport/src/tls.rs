@@ -6,10 +6,15 @@
 //! available solely for local demos behind `QUANTUMACY_INSECURE=1` and logs a
 //! warning at serve time.
 
+use crate::grpc_service::GrpcFederatedLearningService;
+use crate::proto::federated_learning_server::FederatedLearningServer;
+use crate::proto::key_exchange_server::KeyExchangeServer;
 use crate::{TransportError, TransportResult};
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::Path;
-use tonic::transport::{Certificate, ClientTlsConfig, Identity, ServerTlsConfig};
+use tokio_stream::wrappers::TcpListenerStream;
+use tonic::transport::{Certificate, ClientTlsConfig, Identity, Server, ServerTlsConfig};
 use tracing::warn;
 
 pub const ENV_TLS_CERT: &str = "QUANTUMACY_TLS_CERT";
@@ -80,6 +85,43 @@ impl TlsSettings {
                 None
             }
         }
+    }
+}
+
+/// Serve the FL + key-exchange services on `addr` with the given settings.
+/// Runs until the server is shut down.
+pub async fn serve(
+    settings: &TlsSettings,
+    addr: SocketAddr,
+    fl_service: GrpcFederatedLearningService,
+) -> TransportResult<()> {
+    configured_builder(settings)?
+        .add_service(FederatedLearningServer::new(fl_service.clone()))
+        .add_service(KeyExchangeServer::new(fl_service.key_exchange_service()))
+        .serve(addr)
+        .await?;
+    Ok(())
+}
+
+/// Serve on an already-bound listener (lets tests use an ephemeral port).
+pub async fn serve_with_listener(
+    settings: &TlsSettings,
+    listener: tokio::net::TcpListener,
+    fl_service: GrpcFederatedLearningService,
+) -> TransportResult<()> {
+    configured_builder(settings)?
+        .add_service(FederatedLearningServer::new(fl_service.clone()))
+        .add_service(KeyExchangeServer::new(fl_service.key_exchange_service()))
+        .serve_with_incoming(TcpListenerStream::new(listener))
+        .await?;
+    Ok(())
+}
+
+fn configured_builder(settings: &TlsSettings) -> TransportResult<Server> {
+    let builder = Server::builder();
+    match settings.server_tls_config() {
+        Some(tls) => Ok(builder.tls_config(tls)?),
+        None => Ok(builder),
     }
 }
 
