@@ -77,6 +77,12 @@ impl DifferentialPrivacy {
         }
     }
 
+    /// Construct with a fixed RNG seed for **deterministic tests only**.
+    ///
+    /// A predictable seed makes the Gaussian noise reproducible, which
+    /// destroys the differential-privacy guarantee. This constructor must
+    /// never be used in production paths; use [`DifferentialPrivacy::new`],
+    /// which seeds the noise RNG from OS entropy.
     pub fn with_seed(config: DpConfig, seed: u64) -> Self {
         let rdp = RdpAccountant::new(config.noise_multiplier);
         Self {
