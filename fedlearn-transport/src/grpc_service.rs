@@ -83,6 +83,9 @@ pub struct ClientInfo {
 #[derive(Debug, Clone)]
 struct SessionState {
     client_id: String,
+    /// True when the session was established over mTLS and bound to the
+    /// client certificate's CN; such sessions re-verify the CN on every RPC.
+    authenticated: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +103,38 @@ struct TransportRuntime {
     aggregation: Arc<AggregationService>,
     qkd_server: Arc<QkdServer>,
     sessions: Arc<RwLock<HashMap<String, SessionState>>>,
+}
+
+impl TransportRuntime {
+    /// Validate that `client_id` owns `session_id`, and — for sessions
+    /// established over mTLS — that the caller's certificate CN matches the
+    /// session identity. The self-reported `client_id` field is never the
+    /// trust anchor on authenticated sessions.
+    fn validate_session(
+        &self,
+        session_id: &str,
+        client_id: &str,
+        peer_cn: Option<&str>,
+    ) -> Result<(), Status> {
+        let sessions = self.sessions.read();
+        let session = sessions
+            .get(session_id)
+            .ok_or_else(|| Status::not_found(format!("Session not found: {session_id}")))?;
+
+        if session.client_id != client_id {
+            return Err(Status::permission_denied(format!(
+                "Client {client_id} does not own session {session_id}"
+            )));
+        }
+
+        if session.authenticated && peer_cn != Some(session.client_id.as_str()) {
+            return Err(Status::permission_denied(
+                "certificate identity does not match session owner",
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -292,21 +327,6 @@ impl GrpcFederatedLearningService {
         }
     }
 
-    fn validate_session(&self, session_id: &str, client_id: &str) -> Result<(), Status> {
-        let sessions = self.runtime.sessions.read();
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| Status::not_found(format!("Session not found: {session_id}")))?;
-
-        if session.client_id != client_id {
-            return Err(Status::permission_denied(format!(
-                "Client {client_id} does not own session {session_id}"
-            )));
-        }
-
-        Ok(())
-    }
-
     fn decode_update(&self, request: &UpdateRequest) -> Result<ModelUpdate, Status> {
         if request.encrypted {
             let key = self
@@ -333,28 +353,15 @@ impl GrpcFederatedLearningService {
 }
 
 impl GrpcKeyExchangeService {
-    fn validate_session(&self, session_id: &str, client_id: &str) -> Result<(), Status> {
-        let sessions = self.runtime.sessions.read();
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| Status::not_found(format!("Session not found: {session_id}")))?;
-
-        if session.client_id != client_id {
-            return Err(Status::permission_denied(format!(
-                "Client {client_id} does not own session {session_id}"
-            )));
-        }
-
-        Ok(())
-    }
-
     async fn mint_key(
         &self,
         session_id: &str,
         client_id: &str,
+        peer_cn: Option<&str>,
         key_bits: u32,
     ) -> Result<KeyResponse, Status> {
-        self.validate_session(session_id, client_id)?;
+        self.runtime
+            .validate_session(session_id, client_id, peer_cn)?;
 
         let num_qubits = qubits_for_key_bits(key_bits);
         let key_id = self
@@ -385,10 +392,24 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<RegisterRequest>,
     ) -> Result<Response<RegisterResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
         if request.client_id.trim().is_empty() {
             return Err(Status::invalid_argument("client_id is required"));
         }
+
+        // On mTLS connections the certificate CN is the identity; the
+        // self-reported client_id must match it.
+        let authenticated = match &peer_cn {
+            Some(cn) if *cn != request.client_id => {
+                return Err(Status::permission_denied(format!(
+                    "client_id '{}' does not match certificate CN '{cn}'",
+                    request.client_id
+                )));
+            }
+            Some(_) => true,
+            None => false,
+        };
 
         let current_round = self
             .runtime
@@ -399,6 +420,7 @@ impl FederatedLearning for GrpcFederatedLearningService {
             session_id.clone(),
             SessionState {
                 client_id: request.client_id,
+                authenticated,
             },
         );
 
@@ -416,8 +438,13 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<ModelRequest>,
     ) -> Result<Response<ModelResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
-        self.validate_session(&request.session_id, &request.client_id)?;
+        self.runtime.validate_session(
+            &request.session_id,
+            &request.client_id,
+            peer_cn.as_deref(),
+        )?;
 
         let weights = self.runtime.aggregation.get_global_weights();
         let serialized = serde_json::to_vec(&weights)
@@ -434,8 +461,13 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<UpdateRequest>,
     ) -> Result<Response<UpdateResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
-        self.validate_session(&request.session_id, &request.client_id)?;
+        self.runtime.validate_session(
+            &request.session_id,
+            &request.client_id,
+            peer_cn.as_deref(),
+        )?;
 
         let update = self.decode_update(&request)?;
         if update.client_id != request.client_id {
@@ -480,14 +512,17 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<StatusRequest>,
     ) -> Result<Response<StatusResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
-        let sessions = self.runtime.sessions.read();
-        let session = sessions.get(&request.session_id).ok_or_else(|| {
-            Status::not_found(format!("Session not found: {}", request.session_id))
-        })?;
-        let client_id = session.client_id.clone();
-        drop(sessions);
-        self.validate_session(&request.session_id, &client_id)?;
+        let client_id = {
+            let sessions = self.runtime.sessions.read();
+            let session = sessions.get(&request.session_id).ok_or_else(|| {
+                Status::not_found(format!("Session not found: {}", request.session_id))
+            })?;
+            session.client_id.clone()
+        };
+        self.runtime
+            .validate_session(&request.session_id, &client_id, peer_cn.as_deref())?;
 
         let status = self.runtime.aggregation.status_snapshot();
         Ok(Response::new(StatusResponse {
@@ -504,8 +539,13 @@ impl FederatedLearning for GrpcFederatedLearningService {
         &self,
         request: Request<SubscribeRequest>,
     ) -> Result<Response<Self::SubscribeRoundsStream>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
-        self.validate_session(&request.session_id, &request.client_id)?;
+        self.runtime.validate_session(
+            &request.session_id,
+            &request.client_id,
+            peer_cn.as_deref(),
+        )?;
 
         // Snapshot the current state so subscribers don't have to wait for the
         // next aggregation to learn where the platform is.
@@ -566,9 +606,15 @@ impl KeyExchange for GrpcKeyExchangeService {
         &self,
         request: Request<KeyRequest>,
     ) -> Result<Response<KeyResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
         let key = self
-            .mint_key(&request.session_id, &request.client_id, request.key_bits)
+            .mint_key(
+                &request.session_id,
+                &request.client_id,
+                peer_cn.as_deref(),
+                request.key_bits,
+            )
             .await?;
         Ok(Response::new(key))
     }
@@ -577,9 +623,15 @@ impl KeyExchange for GrpcKeyExchangeService {
         &self,
         request: Request<RotateKeyRequest>,
     ) -> Result<Response<KeyResponse>, Status> {
+        let peer_cn = crate::tls::peer_common_name(&request);
         let request = request.into_inner();
         let key = self
-            .mint_key(&request.session_id, &request.client_id, 256)
+            .mint_key(
+                &request.session_id,
+                &request.client_id,
+                peer_cn.as_deref(),
+                256,
+            )
             .await?;
         Ok(Response::new(key))
     }

@@ -139,6 +139,75 @@ async fn test_wrong_ca_client_fails_handshake() {
     assert!(result.is_err(), "wrong-CA client must be rejected");
 }
 
+#[tokio::test]
+async fn test_register_with_mismatched_cn_is_denied() {
+    let pki = TestPki::generate();
+    let port = spawn_server(mutual_settings(&pki)).await;
+
+    // Valid certificate for "alice", but claims to be "bob" in the payload.
+    let (cert, key) = pki.client_cert("alice");
+    let mut client = tls_client(&pki, &cert, &key, port).await.unwrap();
+
+    let err = client.register(register_req("bob")).await.unwrap_err();
+    assert_eq!(err.code(), tonic::Code::PermissionDenied);
+}
+
+#[tokio::test]
+async fn test_session_hijack_via_stolen_session_id_is_denied() {
+    use fedlearn_transport::proto::key_exchange_client::KeyExchangeClient;
+    use fedlearn_transport::proto::{KeyRequest, ModelRequest};
+
+    let pki = TestPki::generate();
+    let port = spawn_server(mutual_settings(&pki)).await;
+
+    // Bob registers legitimately; his session id leaks to Alice.
+    let (bob_cert, bob_key) = pki.client_cert("bob");
+    let mut bob = tls_client(&pki, &bob_cert, &bob_key, port).await.unwrap();
+    let bob_session = bob
+        .register(register_req("bob"))
+        .await
+        .unwrap()
+        .into_inner()
+        .session_id;
+
+    // Alice presents her own valid certificate but claims Bob's identity
+    // and session. The self-reported client_id field must not be trusted.
+    let (alice_cert, alice_key) = pki.client_cert("alice");
+    let alice_tls = client_tls_config(
+        pki.ca_pem.as_bytes(),
+        alice_cert.as_bytes(),
+        alice_key.as_bytes(),
+        "localhost",
+    );
+    let alice_channel = Channel::from_shared(format!("https://127.0.0.1:{port}"))
+        .unwrap()
+        .tls_config(alice_tls)
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+
+    let err = FederatedLearningClient::new(alice_channel.clone())
+        .get_global_model(ModelRequest {
+            session_id: bob_session.clone(),
+            client_id: "bob".to_string(),
+            round: 0,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), tonic::Code::PermissionDenied);
+
+    let err = KeyExchangeClient::new(alice_channel)
+        .request_key(KeyRequest {
+            session_id: bob_session,
+            client_id: "bob".to_string(),
+            key_bits: 256,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), tonic::Code::PermissionDenied);
+}
+
 #[test]
 fn test_pki_generates_parseable_material() {
     let pki = TestPki::generate();

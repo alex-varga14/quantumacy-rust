@@ -139,6 +139,23 @@ pub fn client_tls_config(
         .domain_name(domain)
 }
 
+/// Extract the Common Name from the first peer certificate on an mTLS
+/// connection. Returns `None` on plaintext connections (insecure mode) or if
+/// the certificate carries no CN.
+pub fn peer_common_name<T>(request: &tonic::Request<T>) -> Option<String> {
+    let certs = request.peer_certs()?;
+    let der = certs.first()?;
+    let (_, cert) = x509_parser::parse_x509_certificate(der.as_ref()).ok()?;
+    let cn = cert
+        .subject()
+        .iter_common_name()
+        .next()?
+        .as_str()
+        .ok()
+        .map(str::to_owned);
+    cn
+}
+
 fn read_pem(path: &str, var: &str) -> TransportResult<Vec<u8>> {
     std::fs::read(Path::new(path))
         .map_err(|e| TransportError::Config(format!("unable to read {var} file {path}: {e}")))
