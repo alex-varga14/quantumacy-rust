@@ -10,6 +10,7 @@
 
 use crate::error::{FedError, FedResult};
 use crate::model::ModelWeights;
+use crate::rdp::RdpAccountant;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -54,29 +55,35 @@ impl Default for DpConfig {
 /// Differential privacy mechanism
 pub struct DifferentialPrivacy {
     config: DpConfig,
-    /// Cumulative ε spent so far
+    /// Cumulative ε spent so far (RDP-accounted, kept for API compatibility)
     epsilon_spent: f64,
     /// Number of DP operations applied
     num_compositions: u32,
+    /// Rényi DP accountant for tight multi-round composition
+    rdp: RdpAccountant,
     /// RNG for noise generation
     rng: ChaCha20Rng,
 }
 
 impl DifferentialPrivacy {
     pub fn new(config: DpConfig) -> Self {
+        let rdp = RdpAccountant::new(config.noise_multiplier);
         Self {
             config,
             epsilon_spent: 0.0,
             num_compositions: 0,
+            rdp,
             rng: ChaCha20Rng::from_entropy(),
         }
     }
 
     pub fn with_seed(config: DpConfig, seed: u64) -> Self {
+        let rdp = RdpAccountant::new(config.noise_multiplier);
         Self {
             config,
             epsilon_spent: 0.0,
             num_compositions: 0,
+            rdp,
             rng: ChaCha20Rng::seed_from_u64(seed),
         }
     }
@@ -104,9 +111,12 @@ impl DifferentialPrivacy {
         weights: &ModelWeights,
         num_clients: usize,
     ) -> FedResult<ModelWeights> {
-        // Check privacy budget
-        let round_epsilon = self.compute_round_epsilon();
-        if self.epsilon_spent + round_epsilon > self.config.epsilon_budget {
+        // Check privacy budget using RDP composition: refuse the release if
+        // the ε after this step would exceed the budget (fail-closed, before
+        // any noise is applied or weights are released).
+        let mut probe = self.rdp.clone();
+        probe.step();
+        if probe.epsilon(self.config.delta) > self.config.epsilon_budget {
             return Err(FedError::PrivacyBudgetExhausted {
                 epsilon: self.epsilon_spent,
             });
@@ -124,7 +134,8 @@ impl DifferentialPrivacy {
             })
             .collect();
 
-        self.epsilon_spent += round_epsilon;
+        self.rdp.step();
+        self.epsilon_spent = self.rdp.epsilon(self.config.delta);
         self.num_compositions += 1;
 
         info!(
@@ -146,7 +157,7 @@ impl DifferentialPrivacy {
         z * std_dev
     }
 
-    /// Compute the per-round ε of the Gaussian mechanism.
+    /// Classical single-round ε of the Gaussian mechanism (diagnostic).
     ///
     /// The noise std is `σ · sensitivity`, so the sensitivity cancels and the
     /// classical single-round Gaussian bound depends only on σ and δ:
@@ -154,7 +165,10 @@ impl DifferentialPrivacy {
     /// ε = sqrt(2 · ln(1.25/δ)) / σ
     ///
     /// A non-positive σ provides no privacy, so ε is infinite (refusal).
-    fn compute_round_epsilon(&self) -> f64 {
+    ///
+    /// Budget enforcement uses the tighter [`RdpAccountant`] composition;
+    /// this bound is retained as a reference point for audits.
+    pub fn compute_round_epsilon(&self) -> f64 {
         let sigma = self.config.noise_multiplier;
         if sigma <= 0.0 {
             return f64::INFINITY;
@@ -186,6 +200,7 @@ impl DifferentialPrivacy {
     pub fn reset(&mut self) {
         self.epsilon_spent = 0.0;
         self.num_compositions = 0;
+        self.rdp = RdpAccountant::new(self.config.noise_multiplier);
     }
 
     /// Get the DP mode
@@ -359,6 +374,66 @@ mod tests {
             let eps = dp_with(sigma, delta).compute_round_epsilon();
             proptest::prop_assert!(eps.is_infinite() && eps > 0.0, "ε = {eps}");
         }
+    }
+
+    #[test]
+    fn test_rdp_budget_allows_more_rounds_than_naive() {
+        // σ=1, δ=1e-5, budget=10: naive linear summation of the classical
+        // per-round bound (ε ≈ 4.84) only permits 2 rounds, but the RDP
+        // accountant permits exactly 3 (ε₃ ≈ 9.84, ε₄ ≈ 11.76).
+        let mut dp = DifferentialPrivacy::with_seed(
+            DpConfig {
+                noise_multiplier: 1.0,
+                max_grad_norm: 1.0,
+                delta: 1e-5,
+                epsilon_budget: 10.0,
+                ..Default::default()
+            },
+            42,
+        );
+
+        let w = make_weights(vec![1.0, 2.0, 3.0]);
+        for round in 1..=3 {
+            dp.add_noise(&w, 10)
+                .unwrap_or_else(|e| panic!("round {round} should fit in budget: {e}"));
+        }
+        match dp.add_noise(&w, 10) {
+            Err(FedError::PrivacyBudgetExhausted { .. }) => {}
+            other => panic!("4th round must exhaust budget, got {other:?}"),
+        }
+        assert_eq!(dp.num_compositions(), 3);
+    }
+
+    #[test]
+    fn test_epsilon_spent_tracks_rdp_accountant() {
+        let mut dp = DifferentialPrivacy::with_seed(
+            DpConfig {
+                noise_multiplier: 1.0,
+                max_grad_norm: 1.0,
+                delta: 1e-5,
+                epsilon_budget: 100.0,
+                ..Default::default()
+            },
+            7,
+        );
+
+        let w = make_weights(vec![1.0, 2.0]);
+        let mut reference = crate::rdp::RdpAccountant::new(1.0);
+        for _ in 0..5 {
+            dp.add_noise(&w, 10).unwrap();
+            reference.step();
+        }
+
+        let expected = reference.epsilon(1e-5);
+        assert!(
+            (dp.epsilon_spent() - expected).abs() < 1e-9,
+            "epsilon_spent = {}, RDP accountant = {expected}",
+            dp.epsilon_spent()
+        );
+        assert!(
+            (dp.remaining_budget() - (100.0 - expected)).abs() < 1e-9,
+            "remaining_budget inconsistent"
+        );
     }
 
     #[test]

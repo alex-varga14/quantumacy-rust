@@ -13,6 +13,7 @@ pub mod aggregation;
 pub mod error;
 pub mod model;
 pub mod privacy;
+pub mod rdp;
 pub mod round;
 
 pub use aggregation::FedAvg;
