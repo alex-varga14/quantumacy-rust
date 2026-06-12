@@ -202,8 +202,14 @@ impl QkdProtocol for SixState {
             });
         }
 
-        let corrected = cascade::correct(&alice_remaining, &bob_remaining, qber)?;
-        let final_key_bits = privacy_amplification::amplify(&corrected, qber)?;
+        let reconciled = cascade::reconcile(&alice_remaining, &bob_remaining, qber)?;
+        let pa_seed: [u8; 32] = rng.gen();
+        let final_key_bits = privacy_amplification::toeplitz_amplify(
+            &reconciled.corrected,
+            qber,
+            reconciled.leaked_bits,
+            &pa_seed,
+        )?;
 
         if final_key_bits.len() < self.min_key_bits / 8 {
             return Err(QkdError::InsufficientKeyBits {
