@@ -40,3 +40,23 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace
+
+  security:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit and cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny
+
+      - name: cargo audit
+        run: cargo audit
+
+      - name: cargo deny
+        run: cargo deny check
