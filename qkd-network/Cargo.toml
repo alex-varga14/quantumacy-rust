@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+publish = false
 description = "Async networking layer for QKD key exchange (P2P and client-server)"
 
 [dependencies]

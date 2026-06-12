@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+publish = false
 description = "Federated learning framework with FedAvg aggregation and differential privacy"
 
 [dependencies]
