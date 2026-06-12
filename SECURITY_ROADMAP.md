@@ -189,22 +189,36 @@ simulation itself.
 `qkd-core/src/error_correction/cascade.rs`,
 `qkd-core/src/privacy_amplification.rs`.
 
-- [ ] Replace the in-process P2P simulation with real TCP + rustls between
-      two processes; keep the in-process path as a test fixture.
-- [ ] Authenticate the classical channel (QKD's actual hard requirement —
-      BB84 without an authenticated classical channel is MITM-able even with
-      perfect quantum hardware). Use pre-shared MAC keys or mTLS.
-- [ ] CASCADE: implement true two-party reconciliation (Bob corrects toward
-      Alice via parity exchange transcript) instead of using Alice's bits as
-      canonical output; count and subtract leaked parity bits from the
-      privacy-amplification input entropy.
-- [ ] Privacy amplification: replace SHA-256 counter compression with a
-      Toeplitz-matrix universal hash sized by the leaked-bits accounting.
-- [ ] Two-process integration test: full BB84 + CASCADE + amplification over
-      localhost TCP, keys match on both ends, QBER-threshold abort works.
+- [x] Real TCP P2P: `run_alice`/`run_bob` endpoints over `tokio` TCP; the
+      qubit channel remains simulated behind an explicitly-labeled
+      `SimulatedQuantum` message (the simulation boundary is documented in
+      `qkd-network/src/p2p.rs`); the old in-process peer stays as a test
+      fixture. (Pre-shared HMAC keys chosen over rustls for the classical
+      channel — matches the QKD-literature authentication model.)
+- [x] Authenticated classical channel: length-prefixed frames with
+      HMAC-SHA256 over per-direction sequence number + payload
+      (`qkd-network/src/classical_channel.rs`); tampering or wrong keys
+      abort the protocol; constant-time verification.
+- [x] CASCADE: true two-party message-driven reconciliation
+      (`CascadeMessage` state machines, BINARY search, multi-pass with
+      cascade re-checks, SHA-256 convergence verification); every parity
+      response counted as one leaked bit.
+- [x] Privacy amplification: Toeplitz universal hash over GF(2), output
+      sized as floor(n·rate) − leaked_bits − safety margin; all three
+      protocol pipelines use it. (Conservative: leakage is subtracted on
+      top of the rate heuristic's existing EC term — documented.)
+- [x] Two-process integration test: the test binary re-spawns itself as two
+      OS processes connected only by localhost TCP; identical key id/QBER/
+      leakage/material asserted across processes; QBER abort and tamper
+      abort covered. Sample run: 4096 qubits at 2% noise → QBER 1.6%,
+      157 parity bits leaked, 1056-bit final key, identical on both ends.
 
-**Exit criteria:** two real processes derive identical keys over an
-authenticated channel; leakage accounting documented.
+**Exit criteria (met 2026-06-12, branch `ws5-real-p2p`):** two real OS
+processes derive identical keys over an authenticated channel; leakage
+accounting measured and documented.
+
+Follow-up (new): per-session nonce in the channel `Hello` to rule out
+cross-session replay (sequence numbers are currently per-connection only).
 
 ## Workstream 6 — Supply chain and operational security (start now, ongoing)
 

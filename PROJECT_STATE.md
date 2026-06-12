@@ -2,8 +2,8 @@
 
 **Date**: 2026-06-11
 **MVP Status**: RESEARCH-PARITY MVP + SECURITY WORKSTREAMS 1, 2, 4 — public release live; mutual TLS + certificate-bound authn/z + HKDF per-round keys (WS1), key rotation policy + zeroization + identifier hygiene (WS2), and property-tested DP with RDP accounting (WS4) implemented on top of the audited MVP ([SECURITY_ROADMAP.md](SECURITY_ROADMAP.md))
-**Total Rust LOC**: ~9,200 (incl. demos + server binary)
-**Tests Authored**: 103
+**Total Rust LOC**: ~10,600 (incl. demos + server binary)
+**Tests Authored**: 126
 **Local Test Execution**: ✅ Verified — `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are both green.
 **Workspace Crates**: 7
 
@@ -30,23 +30,23 @@ The repository now has an end-to-end MVP path:
 ## Crate Status
 
 ### `qkd-core` — COMPLETE
-**24 tests authored**
+**36 tests authored**
 
 Fully implemented QKD protocol library:
 - **BB84 protocol** (`protocols/bb84.rs`): Complete key-generation pipeline from qubit preparation through privacy amplification, with configurable sample fraction, QBER threshold, and deterministic seeding.
 - **Six-State protocol** (`protocols/six_state.rs`): Three-basis extension of BB84 with stronger eavesdropping detection and lower sifting rate.
 - **B92 protocol** (`protocols/b92.rs`): Two-state protocol with lower throughput and simpler state preparation.
 - **Quantum channel simulation** (`channel.rs`): Noise, loss, dark counts, and eavesdropping strategies including intercept-resend and Breidbart.
-- **CASCADE error correction** (`error_correction/cascade.rs`): Multi-pass reconciliation with block-size selection from estimated QBER.
-- **Privacy amplification** (`privacy_amplification.rs`): SHA-256-based compression sized by secret-key-rate heuristics.
+- **CASCADE error correction** (`error_correction/cascade.rs`): True two-party message-driven reconciliation with multi-pass BINARY search and per-bit leakage accounting.
+- **Privacy amplification** (`privacy_amplification.rs`): Toeplitz universal hashing sized by secret-key-rate heuristics minus measured CASCADE leakage.
 - **Key manager** (`key_manager.rs`): Thread-safe storage with TTL, capacity control, expiration, and zeroization.
 
 ### `qkd-network` — COMPLETE
-**4 tests authored**
+**15 tests authored**
 
 Async networking layer:
 - **QKD server** (`server.rs`): Runs blocking protocol work on background threads and manages sessions.
-- **P2P abstraction** (`p2p.rs`): Simulated peer-to-peer exchange flow for local coordination.
+- **P2P endpoints** (`p2p.rs`): Real TCP peer-to-peer QKD flow (`run_alice`/`run_bob`) with an HMAC-authenticated classical channel; the qubit channel remains simulated behind an explicit message boundary.
 - **Secure channel** (`secure_channel.rs`): AES-256-GCM message protection with QKD-derived keys.
 
 ### `fedlearn-core` — COMPLETE
@@ -112,8 +112,8 @@ Medical-imaging model layer:
 
 | Crate | Tests Authored | Status |
 |------|----------------|--------|
-| `qkd-core` | 24 | ✅ Passing |
-| `qkd-network` | 4 | ✅ Passing |
+| `qkd-core` | 36 | ✅ Passing |
+| `qkd-network` | 15 | ✅ Passing |
 | `fedlearn-core` | 32 | ✅ Passing |
 | `fedlearn-transport` | 26 (+ 1 binary) | ✅ Passing |
 | `he-core` | 9 | ✅ Passing |
@@ -138,11 +138,7 @@ Key newly covered scenarios:
 
 1. **HE is simulation-grade, not production-grade**: `he-core` currently models CKKS-style workflows but does not yet provide true cryptographic homomorphic security. Replacing internals with `tfhe-rs` is the main Phase 4 production follow-up.
 2. **Medical models are lightweight baselines**: `dl-models` currently uses small dense networks rather than Candle CNNs. This is enough for the MVP integration path, but not a production medical-imaging stack.
-3. **P2P remains simulated**: `qkd-network/src/p2p.rs` still models both peers locally instead of running real network transport.
-4. **CASCADE remains simulation-oriented**: Reconciliation still uses Alice's bits as canonical output rather than a full two-party reconciliation transcript.
-5. **Privacy amplification is simplified**: SHA-256 counter-style compression stands in for a stronger universal-hash construction.
-6. **No TLS overlay yet**: QKD-secured channels do not yet run alongside a rustls/TLS transport layer.
-7. **Key bootstrap is still permissive for MVP**: `KeyExchange` returns raw key bytes to bootstrap the secure transport.
+3. **gRPC transport is hardened; QKD P2P link is HMAC-only**: the FL transport runs mutual TLS and the P2P classical channel is HMAC-authenticated, but cross-session replay protection (session nonce) is still pending on the P2P channel.
 
 Resolved during the research-parity MVP push (2026-04-25):
 - `cargo test --workspace` is green; `protoc` is vendored via `protoc-bin-vendored`.

@@ -60,7 +60,7 @@ cargo run -p qkd-network --example qkd_p2p_demo -- --protocol six-state --qubits
 cargo run -p qkd-network --example qkd_client_server_demo
 ```
 
-Both demos print the protocol parameters, derived key id and length, and run an AES-GCM seal/open round-trip on top of the QKD-derived key.
+The P2P demo runs Alice and Bob as independent endpoints over real localhost TCP with an HMAC-authenticated classical channel (`--role alice|bob` for true two-process operation); both print protocol parameters, leakage accounting, the shared derived key id, and an AES-GCM seal/open round-trip.
 
 ### OpenFL-style federated learning (fedlearn-transport)
 
@@ -112,11 +112,14 @@ re-verifies it.
 
 The MVP targets **research parity** with the upstream CERN/Quantumacy reference: same demos, same protocol coverage, same end-to-end flow, simulation-grade homomorphic encryption. The following are explicitly **out of scope** for this milestone and tracked as post-MVP work:
 
-- Real HE backend (`tfhe-rs` / production CKKS) replacing the `he-core` simulation
-- Real TCP/TLS P2P transport replacing the simulated `qkd-network/src/p2p.rs`
+- Real HE backend (`tfhe-rs` / production CKKS) replacing the `he-core` simulation — spike implemented behind the `backend-tfhe` feature, see `docs/adr/0001-he-backend.md`
 - Candle-backed CNN replacing the dense baseline in `dl-models`
-- Key rotation / session-lifetime policy (transport mTLS, certificate-bound
-  authn/z, and HKDF per-round keys landed with security Workstream 1)
+
+Landed from the security roadmap so far: transport mTLS with
+certificate-bound authn/z and HKDF per-round keys (WS1), key rotation and
+zeroization (WS2), property-tested DP with RDP accounting (WS4), real-TCP
+P2P QKD with an HMAC-authenticated classical channel, two-party CASCADE,
+and Toeplitz privacy amplification (WS5), and dependency CI gates (WS6).
 
 The security side of this work is planned in detail in [SECURITY_ROADMAP.md](SECURITY_ROADMAP.md).
 

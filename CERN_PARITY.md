@@ -10,7 +10,7 @@ simulation-grade homomorphic encryption.
 
 | CERN module | Rust crate(s) | Demo command | Notable deviations from upstream |
 |---|---|---|---|
-| **QKDSimkit** (BB84/B92/Six-State, P2P + client-server CLIs) | `qkd-core`, `qkd-network` | `cargo run -p qkd-network --example qkd_p2p_demo` <br> `cargo run -p qkd-network --example qkd_client_server_demo` | P2P transport is simulated locally rather than over real TCP; protocol selection via `--protocol` flag matches the upstream switch. |
+| **QKDSimkit** (BB84/B92/Six-State, P2P + client-server CLIs) | `qkd-core`, `qkd-network` | `cargo run -p qkd-network --example qkd_p2p_demo` <br> `cargo run -p qkd-network --example qkd_client_server_demo` | P2P runs over real TCP with an HMAC-authenticated classical channel (qubits remain simulated, as upstream); protocol selection via `--protocol` flag matches the upstream switch. |
 | **OpenFL fork** (federated learning orchestration) | `fedlearn-core`, `fedlearn-transport` | `cargo run -p fedlearn-transport --example local_platform_demo` <br> `cargo run -p fedlearn-transport --bin server` | Built directly on `tonic`/`tokio` rather than as an OpenFL plugin; FedAvg/DP semantics are reimplemented in Rust, not borrowed from upstream. |
 | **dl-models / chestscan** (medical imaging classifiers) | `dl-models` | `cargo run -p dl-models --example chestscan_federated_demo` | Lightweight dense classifier instead of the upstream CNN — Candle/`candle-nn` backed CNN is tracked as post-MVP work. Synthetic dataset substitutes for real DICOM scans. |
 | **3-party HE use case** (encrypted inference) | `he-core`, `he-inference` (+ `dl-models` for the model graph) | `cargo run -p he-inference --example three_party_demo` | `he-core` is a CKKS-style simulation, *not* a production CKKS backend (`tfhe-rs` swap is post-MVP). Three-party role separation (client / storage / compute) is enforced at the demo layer; a production split would put each role in its own process. |
@@ -82,8 +82,6 @@ when integrating the workspace:
   simulation.
 - TLS / rustls overlay, authn/z, and elimination of raw key material in
   process memory.
-- Real TCP/TLS P2P transport replacing the simulated peer-to-peer flow in
-  `qkd-network/src/p2p.rs`.
 - Candle-backed CNN replacing the dense baseline in `dl-models`.
 
 Track production hardening in [RELEASE_READINESS.md](RELEASE_READINESS.md).
