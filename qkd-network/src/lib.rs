@@ -15,6 +15,7 @@
 // MVP we accept the larger `Result` shape rather than reshape the public API.
 #![allow(clippy::result_large_err)]
 
+pub mod classical_channel;
 pub mod client;
 pub mod p2p;
 pub mod secure_channel;
@@ -38,6 +39,15 @@ pub enum NetworkError {
 
     #[error("Encryption error: {0}")]
     Encryption(String),
+
+    #[error("Authentication failure: {0}")]
+    Authentication(String),
+
+    #[error("Protocol violation: {0}")]
+    Protocol(String),
+
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
 
     #[error("Session not found: {0}")]
     SessionNotFound(String),

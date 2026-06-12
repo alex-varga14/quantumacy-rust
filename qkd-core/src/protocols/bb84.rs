@@ -59,8 +59,11 @@ impl Bb84 {
         self
     }
 
-    /// Step 1: Alice prepares qubits
-    fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> Vec<Qubit> {
+    /// Step 1: Alice prepares qubits.
+    ///
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> Vec<Qubit> {
         (0..n)
             .map(|_| Qubit {
                 basis: if rng.gen::<bool>() {
@@ -77,8 +80,11 @@ impl Bb84 {
             .collect()
     }
 
-    /// Step 2-3: Bob measures received qubits in random bases
-    fn bob_measure<R: Rng>(
+    /// Step 2-3: Bob measures received qubits in random bases.
+    ///
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn bob_measure<R: Rng>(
         &self,
         received: &[Option<Qubit>],
         rng: &mut R,

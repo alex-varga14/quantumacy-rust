@@ -47,8 +47,11 @@ impl B92 {
         self
     }
 
-    /// Alice encodes: bit 0 → |0⟩ (rectilinear), bit 1 → |+⟩ (diagonal)
-    fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> (Vec<u8>, Vec<Qubit>) {
+    /// Alice encodes: bit 0 → |0⟩ (rectilinear), bit 1 → |+⟩ (diagonal).
+    ///
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> (Vec<u8>, Vec<Qubit>) {
         let bits: Vec<u8> = (0..n).map(|_| rng.gen_range(0u8..2)).collect();
         let qubits: Vec<Qubit> = bits
             .iter()
@@ -71,8 +74,11 @@ impl B92 {
 
     /// Bob measures and reports conclusive/inconclusive results.
     /// Conclusive: Bob measures |1⟩ in rectilinear (means Alice sent |+⟩, bit=1)
-    ///             or |−⟩ in diagonal (means Alice sent |0⟩, bit=0)
-    fn bob_measure<R: Rng>(&self, received: &[Option<Qubit>], rng: &mut R) -> Vec<Option<u8>> {
+    ///             or |−⟩ in diagonal (means Alice sent |0⟩, bit=0).
+    ///
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn bob_measure<R: Rng>(&self, received: &[Option<Qubit>], rng: &mut R) -> Vec<Option<u8>> {
         received
             .iter()
             .map(|q| {

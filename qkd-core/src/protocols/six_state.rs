@@ -54,7 +54,9 @@ impl SixState {
         }
     }
 
-    fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> Vec<Qubit> {
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> Vec<Qubit> {
         (0..n)
             .map(|_| Qubit {
                 basis: Self::random_basis(rng),
@@ -67,7 +69,9 @@ impl SixState {
             .collect()
     }
 
-    fn bob_measure<R: Rng>(
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn bob_measure<R: Rng>(
         &self,
         received: &[Option<Qubit>],
         rng: &mut R,
