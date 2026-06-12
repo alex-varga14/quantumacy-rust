@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+publish = false
 description = "Homomorphic encryption wrapper around tfhe-rs for privacy-preserving ML"
 
 [dependencies]
