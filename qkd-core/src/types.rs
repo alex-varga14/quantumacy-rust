@@ -86,4 +86,8 @@ pub struct QkdStats {
     pub final_key_bits: usize,
     pub key_rate: f64,
     pub eavesdropping_detected: bool,
+    /// Parity bits revealed on the classical channel during error
+    /// correction (subtracted during privacy amplification).
+    #[serde(default)]
+    pub leaked_bits: usize,
 }

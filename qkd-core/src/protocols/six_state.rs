@@ -54,7 +54,9 @@ impl SixState {
         }
     }
 
-    fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> Vec<Qubit> {
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> Vec<Qubit> {
         (0..n)
             .map(|_| Qubit {
                 basis: Self::random_basis(rng),
@@ -67,7 +69,9 @@ impl SixState {
             .collect()
     }
 
-    fn bob_measure<R: Rng>(
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn bob_measure<R: Rng>(
         &self,
         received: &[Option<Qubit>],
         rng: &mut R,
@@ -202,8 +206,14 @@ impl QkdProtocol for SixState {
             });
         }
 
-        let corrected = cascade::correct(&alice_remaining, &bob_remaining, qber)?;
-        let final_key_bits = privacy_amplification::amplify(&corrected, qber)?;
+        let reconciled = cascade::reconcile(&alice_remaining, &bob_remaining, qber)?;
+        let pa_seed: [u8; 32] = rng.gen();
+        let final_key_bits = privacy_amplification::toeplitz_amplify(
+            &reconciled.corrected,
+            qber,
+            reconciled.leaked_bits,
+            &pa_seed,
+        )?;
 
         if final_key_bits.len() < self.min_key_bits / 8 {
             return Err(QkdError::InsufficientKeyBits {
@@ -229,6 +239,7 @@ impl QkdProtocol for SixState {
             final_key_bits: key.material.len() * 8,
             key_rate: (key.material.len() * 8) as f64 / num_qubits as f64,
             eavesdropping_detected,
+            leaked_bits: reconciled.leaked_bits,
         };
 
         info!(

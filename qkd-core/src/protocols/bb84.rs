@@ -59,8 +59,11 @@ impl Bb84 {
         self
     }
 
-    /// Step 1: Alice prepares qubits
-    fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> Vec<Qubit> {
+    /// Step 1: Alice prepares qubits.
+    ///
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn alice_prepare<R: Rng>(&self, n: usize, rng: &mut R) -> Vec<Qubit> {
         (0..n)
             .map(|_| Qubit {
                 basis: if rng.gen::<bool>() {
@@ -77,8 +80,11 @@ impl Bb84 {
             .collect()
     }
 
-    /// Step 2-3: Bob measures received qubits in random bases
-    fn bob_measure<R: Rng>(
+    /// Step 2-3: Bob measures received qubits in random bases.
+    ///
+    /// Public so distributed endpoints (qkd-network P2P) can drive the same
+    /// simulation physics over a real transport.
+    pub fn bob_measure<R: Rng>(
         &self,
         received: &[Option<Qubit>],
         rng: &mut R,
@@ -248,12 +254,23 @@ impl QkdProtocol for Bb84 {
             });
         }
 
-        // Step 6: Error correction (CASCADE)
-        let corrected = cascade::correct(&alice_remaining, &bob_remaining, qber)?;
-        debug!(bits = corrected.len(), "Error correction complete");
+        // Step 6: Error correction (CASCADE) with parity-leakage accounting
+        let reconciled = cascade::reconcile(&alice_remaining, &bob_remaining, qber)?;
+        debug!(
+            bits = reconciled.corrected.len(),
+            leaked_bits = reconciled.leaked_bits,
+            "Error correction complete"
+        );
 
-        // Step 7: Privacy amplification
-        let final_key_bits = privacy_amplification::amplify(&corrected, qber)?;
+        // Step 7: Privacy amplification (Toeplitz hash, shared public seed),
+        // subtracting the parity bits revealed during CASCADE.
+        let pa_seed: [u8; 32] = rng.gen();
+        let final_key_bits = privacy_amplification::toeplitz_amplify(
+            &reconciled.corrected,
+            qber,
+            reconciled.leaked_bits,
+            &pa_seed,
+        )?;
 
         if final_key_bits.len() < self.min_key_bits / 8 {
             return Err(QkdError::InsufficientKeyBits {
@@ -280,6 +297,7 @@ impl QkdProtocol for Bb84 {
             final_key_bits: key.material.len() * 8,
             key_rate: (key.material.len() * 8) as f64 / num_qubits as f64,
             eavesdropping_detected,
+            leaked_bits: reconciled.leaked_bits,
         };
 
         info!(

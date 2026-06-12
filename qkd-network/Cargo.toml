@@ -20,6 +20,9 @@ uuid = { workspace = true }
 bytes = { workspace = true }
 aes-gcm = { workspace = true }
 rand = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
