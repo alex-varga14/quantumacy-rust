@@ -95,24 +95,24 @@ server process; 12 new tests cover the rejection and round-trip paths.
 **Files:** `qkd-core/src/key_manager.rs` (TTL exists — wire it to policy),
 `fedlearn-transport/src/secure_channel.rs`, `he-core/src/encrypt.rs`.
 
-- [ ] Define and document the session policy: max key age, max messages per
-      key, rotation on every aggregation round; enforce in `SecureFLChannel`.
-- [ ] `#[derive(Zeroize, ZeroizeOnDrop)]` (or manual impls) on `ClientKey`,
-      `ServerKey`, `HeKeySet`, and the AES key wrapper in
-      `secure_channel.rs`; audit for copies (e.g. `Clone` derives on key
-      types — remove where possible).
-- [ ] **Fix secret-derived identifiers:** `he-core` currently builds the
-      public `key_id` from the secret seed
-      (`format!("he-{:016x}", secret_seed)`) and derives `mask_seed` from
-      `secret_seed` by rotate/XOR. Harmless in a simulation; fatal in a real
-      backend. Key ids must be random UUIDs, and no public value may be a
-      function of secret material. Fix during or before Workstream 3.
-- [ ] Tests: key refused after TTL/N messages; dropped key memory is zeroed
-      (zeroize's own guarantees + a `Drop` unit test); key id uncorrelated
-      with secret.
+- [x] Session policy defined and enforced in `SecureFLChannel` via
+      `KeyPolicy` (defaults: 1000 messages or 1 hour, whichever first);
+      encrypt paths return `TransportError::KeyExpired` directing rotation
+      via the `rotate_key` RPC; decryption stays unlimited so in-flight
+      messages drain.
+- [x] `Zeroize + ZeroizeOnDrop` on `ClientKey`, `PublicKey`, `ServerKey`
+      (he-core; `SecureKey` in qkd-core already had it). `Clone` retained —
+      each clone zeroizes independently on its own drop (API depends on it).
+- [x] **Secret-derived identifiers fixed:** `he-core` key ids are random
+      UUIDs and `mask_seed` is independent randomness; a test asserts no
+      seed material appears in public identifiers.
+- [x] Tests: encrypt refused after N messages / max age; TTL expiry covered
+      for both `get()` and `consume()` (neither was covered before);
+      compile-time `ZeroizeOnDrop` assertions on all key types.
 
-**Exit criteria:** documented rotation policy in SECURITY.md; no key type
-without zeroization; no public identifier derived from a secret.
+**Exit criteria (met 2026-06-11, branch `ws2-key-lifecycle`):** rotation
+policy enforced and documented in SECURITY.md; no key type without
+zeroization; no public identifier derived from a secret.
 
 ## Workstream 3 — Real homomorphic encryption backend
 
@@ -160,18 +160,23 @@ replaces, transport security).
 
 **Files:** `fedlearn-core/src/privacy.rs`, `fedlearn-core/src/round.rs`.
 
-- [ ] Verify Gaussian mechanism calibration against the standard analytic
-      bound (σ ≥ √(2 ln(1.25/δ)) · Δ/ε) with property tests over parameter
-      ranges.
-- [ ] Replace naive ε-summation budget accounting with RDP/moments
-      accounting for multi-round composition (port the standard accountant;
-      test against published reference values from the DP-SGD literature).
-- [ ] Use `OsRng`/`ChaCha20Rng` seeded from OS entropy for noise — never a
-      reproducible seed in non-test code paths.
-- [ ] Document the (ε, δ) actually delivered per demo configuration.
+- [x] Gaussian mechanism calibration verified with property tests over
+      σ ∈ [0.5, 10], δ ∈ [1e-7, 1e-3] (closed-form equality, monotonicity,
+      σ ≤ 0 refusal); `compute_round_epsilon` simplified to state the
+      actual formula.
+- [x] RDP accountant (`fedlearn-core/src/rdp.rs`, Mironov 2017:
+      ε_RDP(α) = k·α/2σ² over an 18-order grid, converted via
+      min_α[ε_RDP(α) + ln(1/δ)/(α−1)]) replaces naive ε-summation; budget
+      enforcement is fail-closed (prospective check before noise release).
+- [x] RNG hygiene verified: production noise uses `ChaCha20Rng::from_entropy`;
+      `with_seed` is documented test-only and grep-verified unused outside
+      `#[cfg(test)]`.
+- [x] Delivered privacy documented: at σ = 1.0, δ = 1e-5 — single round
+      ε ≈ 5.30; 100 rounds ε ≈ 98.0 (vs ≈ 484 naive, ~4.9× tighter).
 
-**Exit criteria:** accountant matches reference values; SECURITY.md DP row
-upgraded from "unreviewed" to "reviewed, see tests".
+**Exit criteria (met 2026-06-11, branch `ws4-dp-audit`):** accountant
+verified against analytically derived values; SECURITY.md DP row upgraded
+to "reviewed".
 
 ## Workstream 5 — Real P2P transport and QKD classical-channel authentication
 

@@ -18,3 +18,6 @@ Thumbs.db
 
 # Internal working notes (not part of the release)
 AGENT_HANDOFF.md
+
+# Claude harness state (agent worktrees etc.)
+.claude/

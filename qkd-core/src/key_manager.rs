@@ -87,7 +87,13 @@ impl KeyManager {
         Ok(entry.value().clone())
     }
 
-    /// Consume and remove a key (one-time use)
+    /// Consume and remove a key (one-time use).
+    ///
+    /// Note: the key is removed from the store *before* the TTL check.
+    /// Consuming an expired key therefore both returns `KeyExpired` and
+    /// destroys the key. This is intentional: expired key material must
+    /// not remain in the store, and a failed consume must not leave the
+    /// key available for a retry.
     pub fn consume(&self, key_id: &str) -> QkdResult<SecureKey> {
         let (_, key) = self
             .keys
@@ -155,6 +161,13 @@ mod tests {
         }
     }
 
+    /// A key whose timestamp is already older than the given TTL
+    fn make_expired_key(id: &str, ttl: Duration) -> SecureKey {
+        let mut key = make_key(id);
+        key.timestamp = Utc::now() - ttl - Duration::seconds(1);
+        key
+    }
+
     #[test]
     fn test_store_and_retrieve() {
         let mgr = KeyManager::new(KeyManagerConfig::default());
@@ -184,6 +197,63 @@ mod tests {
             mgr.get("nonexistent"),
             Err(QkdError::KeyNotFound(_))
         ));
+    }
+
+    #[test]
+    fn test_get_refuses_expired_key() {
+        let config = KeyManagerConfig::default();
+        let ttl = config.key_ttl;
+        let mgr = KeyManager::new(config);
+
+        mgr.store(make_expired_key("stale", ttl)).unwrap();
+
+        assert!(matches!(mgr.get("stale"), Err(QkdError::KeyExpired(_))));
+        // The expired key is also removed from the store.
+        assert!(matches!(mgr.get("stale"), Err(QkdError::KeyNotFound(_))));
+    }
+
+    #[test]
+    fn test_consume_refuses_expired_key_and_destroys_it() {
+        let config = KeyManagerConfig::default();
+        let ttl = config.key_ttl;
+        let mgr = KeyManager::new(config);
+
+        mgr.store(make_expired_key("stale", ttl)).unwrap();
+
+        // Consuming an expired key is refused...
+        assert!(matches!(mgr.consume("stale"), Err(QkdError::KeyExpired(_))));
+        // ...and intentionally destroys the key in the same step:
+        // expired material must not stay in the store, and a failed
+        // consume must not leave the key available for a retry.
+        assert_eq!(mgr.key_count(), 0);
+        assert!(matches!(
+            mgr.consume("stale"),
+            Err(QkdError::KeyNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn test_evict_expired_removes_only_expired_keys() {
+        let config = KeyManagerConfig {
+            max_keys: 10,
+            key_ttl: Duration::hours(1),
+            auto_expire: false, // store() must not evict on its own here
+        };
+        let ttl = config.key_ttl;
+        let mgr = KeyManager::new(config);
+
+        mgr.store(make_expired_key("stale-1", ttl)).unwrap();
+        mgr.store(make_expired_key("stale-2", ttl)).unwrap();
+        mgr.store(make_key("fresh-1")).unwrap();
+        mgr.store(make_key("fresh-2")).unwrap();
+        assert_eq!(mgr.key_count(), 4);
+
+        mgr.evict_expired();
+
+        assert_eq!(mgr.key_count(), 2);
+        let mut remaining = mgr.list_keys();
+        remaining.sort();
+        assert_eq!(remaining, vec!["fresh-1", "fresh-2"]);
     }
 
     #[test]

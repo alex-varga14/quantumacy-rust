@@ -1,9 +1,9 @@
 # Quantumacy-RS: Project State
 
 **Date**: 2026-06-11
-**MVP Status**: RESEARCH-PARITY MVP + TRANSPORT SECURITY — public release live; security Workstream 1 (mutual TLS, certificate-bound authn/z, HKDF per-round keys) implemented on top of the audited MVP ([SECURITY_ROADMAP.md](SECURITY_ROADMAP.md))
-**Total Rust LOC**: ~8,600 (incl. demos + server binary)
-**Tests Authored**: 79
+**MVP Status**: RESEARCH-PARITY MVP + SECURITY WORKSTREAMS 1, 2, 4 — public release live; mutual TLS + certificate-bound authn/z + HKDF per-round keys (WS1), key rotation policy + zeroization + identifier hygiene (WS2), and property-tested DP with RDP accounting (WS4) implemented on top of the audited MVP ([SECURITY_ROADMAP.md](SECURITY_ROADMAP.md))
+**Total Rust LOC**: ~9,200 (incl. demos + server binary)
+**Tests Authored**: 103
 **Local Test Execution**: ✅ Verified — `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are both green.
 **Workspace Crates**: 7
 
@@ -30,7 +30,7 @@ The repository now has an end-to-end MVP path:
 ## Crate Status
 
 ### `qkd-core` — COMPLETE
-**21 tests authored**
+**24 tests authored**
 
 Fully implemented QKD protocol library:
 - **BB84 protocol** (`protocols/bb84.rs`): Complete key-generation pipeline from qubit preparation through privacy amplification, with configurable sample fraction, QBER threshold, and deterministic seeding.
@@ -50,7 +50,7 @@ Async networking layer:
 - **Secure channel** (`secure_channel.rs`): AES-256-GCM message protection with QKD-derived keys.
 
 ### `fedlearn-core` — COMPLETE
-**19 tests authored**
+**32 tests authored**
 
 Federated learning primitives:
 - **FedAvg aggregation** (`aggregation.rs`): Uniform and sample-weighted averaging, outlier rejection, momentum, and minimum participation thresholds.
@@ -59,7 +59,7 @@ Federated learning primitives:
 - **Round orchestration** (`round.rs`): Single-round execution with DP integration and early stopping controls.
 
 ### `fedlearn-transport` — MVP COMPLETE
-**20 tests authored** (+ 1 server binary smoke-tested)
+**26 tests authored** (+ 1 server binary smoke-tested)
 
 Transport and service layer:
 - **Secure FL channel** (`secure_channel.rs`): QKD-backed AES-GCM transport for `ModelUpdate` and `ModelWeights`.
@@ -70,7 +70,7 @@ Transport and service layer:
 - **Integration flow** (`tests/mvp_flow.rs`): Registration, key minting, encrypted submission, aggregation round-trip, and a `SubscribeRounds` stream test that observes a round transition after aggregation.
 
 ### `he-core` — MVP COMPLETE
-**7 tests authored**
+**9 tests authored**
 
 Simulation-grade homomorphic encryption core:
 - **HE scheme config** (`schemes.rs`): CKKS-style simulation parameters plus polynomial-friendly activation definitions.
@@ -112,11 +112,11 @@ Medical-imaging model layer:
 
 | Crate | Tests Authored | Status |
 |------|----------------|--------|
-| `qkd-core` | 21 | ✅ Passing |
+| `qkd-core` | 24 | ✅ Passing |
 | `qkd-network` | 4 | ✅ Passing |
-| `fedlearn-core` | 19 | ✅ Passing |
-| `fedlearn-transport` | 20 (+ 1 binary) | ✅ Passing |
-| `he-core` | 7 | ✅ Passing |
+| `fedlearn-core` | 32 | ✅ Passing |
+| `fedlearn-transport` | 26 (+ 1 binary) | ✅ Passing |
+| `he-core` | 9 | ✅ Passing |
 | `he-inference` | 4 | ✅ Passing |
 | `dl-models` | 4 | ✅ Passing |
 

@@ -2,28 +2,39 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::schemes::HeParameters;
 use crate::{HeError, HeResult};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// Key types zeroize their secret seeds when dropped. `Clone` and serde
+// derives are kept because the API depends on them; each cloned (or
+// deserialized) copy is zeroized independently on its own drop, so no
+// copy outlives its owner with the seed still in memory.
+#[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct ClientKey {
+    #[zeroize(skip)]
     pub key_id: String,
     secret_seed: u64,
+    #[zeroize(skip)]
     pub params: HeParameters,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct PublicKey {
+    #[zeroize(skip)]
     pub key_id: String,
     mask_seed: u64,
+    #[zeroize(skip)]
     pub params: HeParameters,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct ServerKey {
+    #[zeroize(skip)]
     pub key_id: String,
     refresh_seed: u64,
+    #[zeroize(skip)]
     pub params: HeParameters,
 }
 
@@ -82,10 +93,12 @@ pub fn generate_keys(params: HeParameters) -> HeResult<HeKeySet> {
     params.validate()?;
 
     let mut rng = rand::thread_rng();
+    // Each seed is sampled independently and the public key id is a
+    // random UUID: nothing public-facing is derived from a secret.
     let secret_seed = rng.gen::<u64>();
-    let mask_seed = secret_seed.rotate_left(17) ^ 0xA5A5_A5A5_A5A5_A5A5;
+    let mask_seed = rng.gen::<u64>();
     let refresh_seed = rng.gen::<u64>();
-    let key_id = format!("he-{:016x}", secret_seed);
+    let key_id = format!("he-{}", uuid::Uuid::new_v4());
 
     Ok(HeKeySet {
         client_key: ClientKey {
@@ -214,6 +227,44 @@ mod tests {
         for (expected, actual) in values.iter().zip(decrypted.iter()) {
             assert!((expected - actual).abs() < 1e-9);
         }
+    }
+
+    #[test]
+    fn test_key_id_does_not_leak_seeds() {
+        let keys = generate_keys(HeParameters::default()).unwrap();
+
+        // The public key id must not embed either seed in hex form.
+        let secret_hex = format!("{:016x}", keys.client_key.secret_seed);
+        let mask_hex = format!("{:016x}", keys.public_key.mask_seed);
+        assert!(
+            !keys.client_key.key_id.contains(&secret_hex),
+            "key_id leaks the secret seed"
+        );
+        assert!(
+            !keys.client_key.key_id.contains(&mask_hex),
+            "key_id leaks the mask seed"
+        );
+
+        // The mask seed must not be derivable from the secret seed.
+        assert_ne!(
+            keys.public_key.mask_seed,
+            keys.client_key.secret_seed.rotate_left(17) ^ 0xA5A5_A5A5_A5A5_A5A5,
+            "mask seed is derived from the secret seed"
+        );
+    }
+
+    /// Compile-time proof that a type scrubs its secrets when dropped.
+    fn assert_zeroize_on_drop<T: zeroize::ZeroizeOnDrop>() {}
+
+    #[test]
+    fn test_key_types_zeroize_on_drop() {
+        assert_zeroize_on_drop::<ClientKey>();
+        assert_zeroize_on_drop::<PublicKey>();
+        assert_zeroize_on_drop::<ServerKey>();
+
+        // Exercise the Drop path: construct a full key set and drop it.
+        let keys = generate_keys(HeParameters::default()).unwrap();
+        drop(keys);
     }
 
     #[test]
