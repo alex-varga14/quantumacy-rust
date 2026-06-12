@@ -135,7 +135,9 @@ keep the public API), `he-core/Cargo.toml` (feature flags
 `he-inference/src/model.rs` (tolerance constants), `dl-models/src/common.rs`
 (quantized export path if Option A).
 
-- [ ] Spike + ADR committed as `docs/adr/0001-he-backend.md`.
+- [x] ADR committed as `docs/adr/0001-he-backend.md` (decision: `tfhe-rs`,
+      openfhe-FFI fallback). Hands-on spike gate defined there; spike
+      implementation is the next WS3 step.
 - [ ] Implement backend behind feature flag; `CiphertextVector` loses the
       `mask` field in the real backend (serialized ciphertext only).
 - [ ] Port the existing parity tests: encrypted vs plaintext inference
@@ -212,9 +214,13 @@ CI change rather than waiting their turn.
 **Files:** `.github/workflows/ci.yml`, new `deny.toml`, new
 `.github/dependabot.yml`.
 
-- [ ] `cargo audit` job in CI (RUSTSEC advisories fail the build).
-- [ ] `cargo deny` for license + duplicate-version policy (`deny.toml`).
-- [ ] Dependabot/Renovate for `Cargo.toml` and GitHub Actions versions.
+- [x] `cargo audit` job in CI (RUSTSEC advisories fail the build).
+- [x] `cargo deny` for license + duplicate-version policy (`deny.toml`;
+      one triaged ignore: rustls-pemfile unmaintained, RUSTSEC-2025-0134).
+- [x] Dependabot for `Cargo.toml` (weekly, grouped minor/patch) and GitHub
+      Actions versions. (Dependabot alerts + security updates enabled in
+      repo settings 2026-06-11; first alert batch — rustls-webpki — was
+      fixed by the tonic 0.12 upgrade.)
 - [ ] Fuzz the deserialization surfaces with `cargo-fuzz`: protobuf-decoded
       messages into `grpc_service.rs`, and `serde_json` paths in
       `fedlearn-core/src/model.rs`.
