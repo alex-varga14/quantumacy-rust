@@ -239,6 +239,7 @@ impl QkdProtocol for SixState {
             final_key_bits: key.material.len() * 8,
             key_rate: (key.material.len() * 8) as f64 / num_qubits as f64,
             eavesdropping_detected,
+            leaked_bits: reconciled.leaked_bits,
         };
 
         info!(

@@ -302,6 +302,7 @@ where
         final_key_bits,
         key_rate: final_key_bits as f64 / n as f64,
         eavesdropping_detected: false,
+        leaked_bits,
     };
     info!(
         key_id = %key.key_id,
@@ -489,6 +490,7 @@ where
         final_key_bits,
         key_rate: final_key_bits as f64 / num_qubits as f64,
         eavesdropping_detected: false,
+        leaked_bits,
     };
     info!(
         key_id = %key.key_id,
